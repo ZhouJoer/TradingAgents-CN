@@ -2914,6 +2914,7 @@ class ConfigService:
             "azure": "AZURE_OPENAI_API_KEY",
             "siliconflow": "SILICONFLOW_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
+            "minimax": "MINIMAX_API_KEY",
             # 🆕 聚合渠道
             "302ai": "AI302_API_KEY",
             "aihubmix": "AIHUBMIX_API_KEY",
@@ -3223,6 +3224,15 @@ class ConfigService:
                     "default_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
                     "aliases": canonical_aliases("qwen"),
                     "supported_features": ["chat", "completion", "embedding", "function_calling", "streaming"]
+                },
+                {
+                    "name": "minimax",
+                    "display_name": "MiniMax",
+                    "description": "MiniMax 提供 OpenAI 兼容接口，可直接用于快速/深度分析",
+                    "website": "https://www.minimaxi.com/",
+                    "api_doc_url": "https://www.minimaxi.com/document",
+                    "default_base_url": os.getenv("MINIMAX_BASE_URL", "https://api.minimaxi.com/v1"),
+                    "supported_features": ["chat", "completion", "function_calling", "streaming", "vision"]
                 },
                 {
                     "name": "deepseek",

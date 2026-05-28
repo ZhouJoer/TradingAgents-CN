@@ -341,6 +341,11 @@ def _get_default_provider_by_model(model_name: str) -> str:
     根据模型名称返回默认的供应商映射
     这是一个后备方案，当数据库查询失败时使用
     """
+    model_name_lower = str(model_name or "").strip().lower()
+    if model_name_lower.startswith(("minimax-", "abab", "mimo-")):
+        logger.info(f"🔧 使用 MiniMax 映射: {model_name} -> minimax")
+        return "minimax"
+
     # 模型名称到供应商的默认映射
     model_provider_map = {
         # 阿里百炼 (DashScope)

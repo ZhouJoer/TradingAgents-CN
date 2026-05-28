@@ -27,6 +27,7 @@ class ModelProvider(str, Enum):
     GOOGLE = "google"
     SILICONFLOW = "siliconflow"
     OPENROUTER = "openrouter"
+    MINIMAX = "minimax"
     CUSTOM_OPENAI = "custom_openai"
     QIANFAN = "qianfan"
     LOCAL = "local"
