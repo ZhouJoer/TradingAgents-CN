@@ -38,6 +38,57 @@ export interface SingleAnalysisRequest {
   }
 }
 
+export interface IndustryAnalysisRequest {
+  industry_query: string
+  parameters?: {
+    market?: string
+    top_n?: number
+    enable_web_search?: boolean
+    language?: string
+    quick_analysis_model?: string
+    deep_analysis_model?: string
+  }
+}
+
+export interface IndustryStockPick {
+  code: string
+  name: string
+  industry?: string
+  total_score: number
+  scores: Record<string, number>
+  risk_deduction: number
+  reason: string
+  risk: string
+  metrics: Record<string, any>
+}
+
+export interface IndustryAnalysisResult {
+  analysis_id: string
+  industry_query: string
+  market: string
+  top_n: number
+  summary: string
+  due_diligence_report: string
+  stock_selection_report: string
+  picks: IndustryStockPick[]
+  candidates_count: number
+  keywords: string[]
+  sources: Array<{
+    title: string
+    url: string
+    source: string
+    domain: string
+    published_at?: string
+    snippet: string
+  }>
+  web_search_enabled: boolean
+  web_search_status: string
+  disclaimer: string
+  execution_time: number
+  model_info?: string
+  created_at: string
+}
+
 export interface AnalysisProgress {
   analysis_id: string
   status: 'pending' | 'running' | 'completed' | 'failed'
@@ -126,6 +177,21 @@ export const analysisApi = {
   // 开始单股分析（使用后端期望的格式）
   startSingleAnalysis(analysisRequest: SingleAnalysisRequest): Promise<ApiResponse<any>> {
     return request.post('/api/analysis/single', analysisRequest)
+  },
+
+  // 开始行业分析
+  startIndustryAnalysis(analysisRequest: IndustryAnalysisRequest): Promise<ApiResponse<any>> {
+    return request.post('/api/analysis/industry', analysisRequest)
+  },
+
+  // 获取行业分析任务状态
+  getIndustryTaskStatus(taskId: string): Promise<ApiResponse<any>> {
+    return request.get(`/api/analysis/industry/tasks/${taskId}/status`)
+  },
+
+  // 获取行业分析结果
+  getIndustryTaskResult(taskId: string): Promise<ApiResponse<IndustryAnalysisResult>> {
+    return request.get(`/api/analysis/industry/tasks/${taskId}/result`)
   },
 
   // 获取任务状态
@@ -477,7 +543,4 @@ export const getStockPlaceholder = (market: string): string => {
   }
   return placeholders[market] ?? '输入股票代码'
 }
-
-
-
 

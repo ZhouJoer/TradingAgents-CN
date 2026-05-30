@@ -15,6 +15,7 @@ SENSITIVE_KEYS = {
     "JWT_SECRET",
     "CSRF_SECRET",
     "STOCK_DATA_API_KEY",
+    "BOCHA_API_KEY",
     "REFRESH_TOKEN_EXPIRE_DAYS",  # not sensitive itself, but keep for completeness
 }
 

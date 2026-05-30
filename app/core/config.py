@@ -178,6 +178,14 @@ class Settings(BaseSettings):
     STOCK_DATA_API_URL: str = Field(default="")
     STOCK_DATA_API_KEY: str = Field(default="")
 
+    # 行业分析联网检索配置
+    INDUSTRY_WEB_SEARCH_ENABLED: bool = Field(default=True, description="启用行业分析联网检索")
+    INDUSTRY_WEB_SEARCH_PROVIDER: str = Field(default="bocha", description="行业分析联网检索供应商")
+    BOCHA_API_KEY: str = Field(default="", description="Bocha Search API Key")
+    BOCHA_API_BASE_URL: str = Field(default="https://api.bochaai.com/v1/web-search", description="Bocha Web Search API 地址")
+    INDUSTRY_WEB_SEARCH_MAX_RESULTS: int = Field(default=20, ge=1, le=100, description="行业分析联网检索最大结果数")
+    INDUSTRY_WEB_SEARCH_TIMEOUT: int = Field(default=15, ge=1, le=120, description="行业分析联网检索超时时间")
+
     # SSE 配置
     SSE_POLL_TIMEOUT_SECONDS: float = Field(default=1.0)
     SSE_HEARTBEAT_INTERVAL_SECONDS: int = Field(default=10)

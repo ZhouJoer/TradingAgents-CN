@@ -112,6 +112,13 @@ class StartupValidator:
             example="xxx",
             help_url="https://tushare.pro/weborder/#/login?reg=tacn"
         ),
+        ConfigItem(
+            key="BOCHA_API_KEY",
+            level=ConfigLevel.RECOMMENDED,
+            description="Bocha Search API Key（用于行业分析联网检索）",
+            example="sk-xxx",
+            help_url="https://bocha.cn/"
+        ),
     ]
     
     def __init__(self):
@@ -351,4 +358,3 @@ def validate_startup_config() -> ValidationResult:
     result = validator.validate()
     validator.raise_if_failed()
     return result
-

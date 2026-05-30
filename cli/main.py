@@ -1,4 +1,5 @@
 # 标准库导入
+import asyncio
 import datetime
 import os
 import re
@@ -1617,6 +1618,68 @@ def analyze():
     Launch interactive stock analysis tool
     """
     run_analysis()
+
+
+@app.command(
+    name="industry",
+    help="行业分析与A股Top 5选股 | Industry analysis and A-share stock selection"
+)
+def industry(
+    industry_query: str = typer.Argument(..., help="行业或概念，例如：AI相关、高股息、传统行业"),
+    top_n: int = typer.Option(5, "--top-n", "-n", min=1, max=10, help="返回股票数量"),
+    web_search: bool = typer.Option(True, "--web-search/--no-web-search", help="是否启用联网权威资料检索"),
+):
+    """Run industry due diligence and A-share stock selection."""
+
+    async def _run() -> None:
+        from app.core.database import close_db, init_db
+        from app.models.industry_analysis import IndustryAnalysisParameters, IndustryAnalysisRequest
+        from app.services.industry_analysis_service import get_industry_analysis_service
+
+        await init_db()
+        try:
+            service = get_industry_analysis_service()
+            request = IndustryAnalysisRequest(
+                industry_query=industry_query,
+                parameters=IndustryAnalysisParameters(top_n=top_n, enable_web_search=web_search),
+            )
+            task = await service.create_task("cli", request)
+            task_id = task["task_id"]
+            console.print(f"[cyan]行业分析任务已启动:[/cyan] {task_id}")
+            await service.execute_background(task_id, "cli", request)
+            result = await service.get_task_result(task_id)
+            if not result:
+                console.print("[red]未获取到行业分析结果[/red]")
+                raise typer.Exit(code=1)
+
+            console.print(Panel(result.get("summary", ""), title="核心结论", border_style="green"))
+
+            picks = result.get("picks", [])
+            table = Table(title=f"{industry_query} A股Top {len(picks)}", box=box.SIMPLE_HEAVY)
+            table.add_column("排名", justify="right")
+            table.add_column("代码")
+            table.add_column("名称")
+            table.add_column("行业")
+            table.add_column("总分", justify="right")
+            table.add_column("理由")
+            for idx, item in enumerate(picks, 1):
+                table.add_row(
+                    str(idx),
+                    str(item.get("code", "")),
+                    str(item.get("name", "")),
+                    str(item.get("industry") or ""),
+                    f"{float(item.get('total_score') or 0):.2f}",
+                    str(item.get("reason", "")),
+                )
+            console.print(table)
+
+            report = result.get("stock_selection_report") or result.get("due_diligence_report") or ""
+            if report:
+                console.print(Panel(Markdown(report), title="报告", border_style="blue"))
+        finally:
+            await close_db()
+
+    asyncio.run(_run())
 
 
 @app.command(

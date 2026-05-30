@@ -66,6 +66,11 @@ const routes: RouteRecordRaw[] = [
         name: 'BatchAnalysis',
         component: () => import('@/views/Analysis/BatchAnalysis.vue')
       },
+      {
+        path: 'industry',
+        name: 'IndustryAnalysis',
+        component: () => import('@/views/Analysis/IndustryAnalysis.vue')
+      },
 
     ]
   },
