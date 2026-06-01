@@ -19,6 +19,7 @@ _OPENAI_COMPATIBLE = {
     "qianfan",
     "openrouter",
     "aihubmix",
+    "minimax",
     "ollama",
     "custom_openai",
 }

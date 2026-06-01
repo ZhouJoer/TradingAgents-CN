@@ -40,6 +40,8 @@ from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.utils.logging_manager import get_logger
 
+from cli.industry_analysis import app as industry_app
+
 # 加载环境变量
 load_dotenv()
 
@@ -147,6 +149,7 @@ app = typer.Typer(
     rich_markup_mode="rich",  # Enable rich markup
     no_args_is_help=False,  # 不显示帮助，直接进入分析模式
 )
+app.add_typer(industry_app, name="industry", help="行业/概念分析")
 
 
 # Create a deque to store recent messages with a maximum length
@@ -1969,10 +1972,11 @@ def help_chinese():
     logger.info(f"\n[bold blue]📖 TradingAgents 中文帮助 | Chinese Help[/bold blue]")
 
     logger.info(f"\n[bold yellow]🚀 快速开始 | Quick Start:[/bold yellow]")
-    logger.info(f"1. [cyan]python -m cli.main config[/cyan]     # 查看配置信息")
-    logger.info(f"2. [cyan]python -m cli.main examples[/cyan]   # 查看示例程序")
-    logger.info(f"3. [cyan]python -m cli.main test[/cyan]       # 运行测试")
-    logger.info(f"4. [cyan]python -m cli.main analyze[/cyan]    # 开始股票分析")
+    logger.info(f"1. [cyan]python -m cli.main config[/cyan]                 # 查看配置信息")
+    logger.info(f"2. [cyan]python -m cli.main examples[/cyan]               # 查看示例程序")
+    logger.info(f"3. [cyan]python -m cli.main test[/cyan]                   # 运行测试")
+    logger.info(f"4. [cyan]python -m cli.main analyze[/cyan]                # 开始股票分析")
+    logger.info(f"5. [cyan]python -m cli.main industry analyze AI相关[/cyan] # 行业/概念分析")
 
     logger.info(f"\n[bold yellow]📋 主要命令 | Main Commands:[/bold yellow]")
 
@@ -1990,6 +1994,11 @@ def help_chinese():
         "config",
         "配置设置 | Configuration",
         "查看和配置LLM提供商、API密钥等设置"
+    )
+    commands_table.add_row(
+        "industry",
+        "行业/概念分析 | Industry Analysis",
+        "按概念/行业筛选候选股并生成推荐结论"
     )
     commands_table.add_row(
         "examples",
@@ -2036,7 +2045,7 @@ def main():
             # 只在退出码为2（typer的未知命令错误）时提供智能建议
             if e.code == 2 and len(sys.argv) > 1:
                 unknown_command = sys.argv[1]
-                available_commands = ['analyze', 'config', 'version', 'data-config', 'examples', 'test', 'help']
+                available_commands = ['analyze', 'industry', 'config', 'version', 'data-config', 'examples', 'test', 'help']
                 
                 # 使用difflib找到最相似的命令
                 suggestions = get_close_matches(unknown_command, available_commands, n=3, cutoff=0.6)
