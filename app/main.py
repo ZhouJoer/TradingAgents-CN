@@ -28,7 +28,7 @@ from pathlib import Path
 from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.core.logging_config import setup_logging
-from app.routers import auth_db as auth, analysis, screening, queue, sse, health, favorites, config, reports, database, operation_logs, tags, tushare_init, akshare_init, baostock_init, historical_data, multi_period_sync, financial_data, news_data, social_media, internal_messages, usage_statistics, model_capabilities, cache, logs
+from app.routers import auth_db as auth, analysis, industry_analysis, screening, queue, sse, health, favorites, config, reports, database, operation_logs, tags, tushare_init, akshare_init, baostock_init, historical_data, multi_period_sync, financial_data, news_data, social_media, internal_messages, usage_statistics, model_capabilities, cache, logs
 from app.routers import sync as sync_router, multi_source_sync
 from app.routers import stocks as stocks_router
 from app.routers import stock_data as stock_data_router
@@ -257,6 +257,23 @@ async def lifespan(app: FastAPI):
     await _print_config_summary(logger)
 
     logger.info("TradingAgents FastAPI backend started")
+
+    # 清理因重启而中断的行业分析任务
+    try:
+        from app.core.database import get_mongo_db
+        db = get_mongo_db()
+        stale_result = await db["industry_analysis_tasks"].update_many(
+            {"status": {"$in": ["running", "pending"]}},
+            {"$set": {
+                "status": "failed",
+                "error": "服务器重启，任务已中断。请重新提交分析。",
+                "progress_message": "任务因服务器重启而中断",
+            }},
+        )
+        if stale_result.modified_count > 0:
+            logger.info(f"🧹 已清理 {stale_result.modified_count} 个中断的行业分析任务")
+    except Exception as e:
+        logger.warning(f"清理中断任务失败(忽略): {e}")
 
     # 启动期：若需要在休市时补充上一交易日收盘快照
     if settings.QUOTES_BACKFILL_ON_STARTUP:
@@ -686,6 +703,7 @@ async def test_log():
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
+app.include_router(industry_analysis.router, prefix="/api/industry-analysis", tags=["industry-analysis"])
 app.include_router(reports.router, tags=["reports"])
 app.include_router(screening.router, prefix="/api/screening", tags=["screening"])
 app.include_router(queue.router, prefix="/api/queue", tags=["queue"])
