@@ -1,0 +1,158 @@
+name: Sync OTA Manifest to Gitee
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v1.0.2)'
+        required: true
+
+jobs:
+  sync-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine version tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate and upload update-manifest.json
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_OWNER: ${{ secrets.GITEE_OWNER }}
+          GITEE_REPO: ${{ secrets.GITEE_REPO }}
+          GITEE_BRANCH: ${{ secrets.GITEE_BRANCH }}
+        run: |
+          python3 <<'PY'
+          import base64
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          tag = os.environ.get("TAG", "").strip()
+          docker_user = os.environ.get("DOCKER_USER", "").strip()
+          token = os.environ.get("GITEE_TOKEN", "").strip()
+          owner = os.environ.get("GITEE_OWNER", "").strip()
+          repo = os.environ.get("GITEE_REPO", "").strip()
+          branch = os.environ.get("GITEE_BRANCH", "").strip() or "master"
+
+          missing = [name for name, val in [
+              ("TAG", tag),
+              ("DOCKERHUB_USERNAME", docker_user),
+              ("GITEE_TOKEN", token),
+              ("GITEE_OWNER", owner),
+              ("GITEE_REPO", repo),
+          ] if not val]
+          if missing:
+              print(f"::error::Missing required values: {', '.join(missing)}")
+              sys.exit(1)
+
+          manifest = {
+              "version": tag,
+              "images": {
+                  "backend": f"{docker_user}/tradingagents-backend:{tag}",
+                  "frontend": f"{docker_user}/tradingagents-frontend:{tag}",
+              },
+          }
+          manifest_text = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
+          print("Generated manifest:")
+          print(manifest_text)
+
+          file_path = "update-manifest.json"
+          api_url = (
+              f"https://gitee.com/api/v5/repos/{owner}/{repo}/contents/"
+              f"{urllib.parse.quote(file_path)}"
+          )
+
+          def gitee_request(method, payload=None, params=None):
+              url = api_url
+              if params:
+                  url += "?" + urllib.parse.urlencode(params)
+              data = None
+              headers = {"Content-Type": "application/json"}
+              if payload is not None:
+                  data = json.dumps(payload).encode("utf-8")
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(req, timeout=60) as resp:
+                  body = resp.read().decode("utf-8", errors="replace")
+                  return resp.status, body
+
+          def extract_file_sha(data, filename="update-manifest.json"):
+              if isinstance(data, dict):
+                  return data.get("sha", "") or ""
+              if isinstance(data, list):
+                  for item in data:
+                      if isinstance(item, dict) and item.get("name") == filename:
+                          return item.get("sha", "") or ""
+                  if len(data) == 1 and isinstance(data[0], dict):
+                      return data[0].get("sha", "") or ""
+              return ""
+
+          existing_sha = ""
+          try:
+              status, body = gitee_request(
+                  "GET",
+                  params={"access_token": token, "ref": branch},
+              )
+              if status == 200:
+                  parsed = json.loads(body)
+                  existing_sha = extract_file_sha(parsed, file_path)
+                  print(f"Existing file sha: {existing_sha or '(none, will create)'}")
+          except urllib.error.HTTPError as err:
+              if err.code != 404:
+                  print(f"::warning::GET manifest failed: HTTP {err.code}")
+                  print(err.read().decode("utf-8", errors="replace"))
+          except json.JSONDecodeError as err:
+              print(f"::warning::GET manifest returned invalid JSON: {err}")
+
+          payload = {
+              "access_token": token,
+              "content": base64.b64encode(manifest_text.encode("utf-8")).decode("ascii"),
+              "message": f"OTA release {tag}",
+              "branch": branch,
+          }
+          if existing_sha:
+              payload["sha"] = existing_sha
+
+          method = "PUT" if existing_sha else "POST"
+          print(f"Uploading via {method} to branch '{branch}' ...")
+
+          try:
+              status, body = gitee_request(method, payload=payload)
+              print(f"Gitee response HTTP {status}")
+              print(body)
+          except urllib.error.HTTPError as err:
+              print(f"::error::Gitee upload failed: HTTP {err.code}")
+              print(err.read().decode("utf-8", errors="replace"))
+              sys.exit(1)
+
+          print(f"::notice::Manifest URL: https://gitee.com/{owner}/{repo}/raw/{branch}/{file_path}")
+          PY
+
+      - name: Summary
+        env:
+          GITEE_OWNER: ${{ secrets.GITEE_OWNER }}
+          GITEE_REPO: ${{ secrets.GITEE_REPO }}
+          GITEE_BRANCH: ${{ secrets.GITEE_BRANCH }}
+        run: |
+          BRANCH="${GITEE_BRANCH:-master}"
+          echo "## OTA Manifest Synced" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Version: \`${{ steps.version.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Gitee repo: \`${GITEE_OWNER}/${GITEE_REPO}\` (branch: \`${BRANCH}\`)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "部署 Mac \`MANIFEST_URL\`:" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`https://gitee.com/${GITEE_OWNER}/${GITEE_REPO}/raw/${BRANCH}/update-manifest.json\`" >> "$GITHUB_STEP_SUMMARY"
