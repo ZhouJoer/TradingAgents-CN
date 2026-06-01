@@ -117,6 +117,18 @@ MODEL_OPTIONS: ProviderModeOptions = {
             ("Custom model ID", "custom"),
         ],
     },
+    "minimax": {
+        "quick": [
+            ("MiniMax M2.7 HighSpeed - Quick analysis", "MiniMax-M2.7-highspeed"),
+            ("MiniMax M2.5 HighSpeed - Fast fallback", "MiniMax-M2.5-highspeed"),
+            ("Custom model ID", "custom"),
+        ],
+        "deep": [
+            ("MiniMax M2.7 - Deep analysis", "MiniMax-M2.7"),
+            ("MiniMax M2.5 - Balanced fallback", "MiniMax-M2.5"),
+            ("Custom model ID", "custom"),
+        ],
+    },
     "custom_openai": {
         "quick": [
             ("GPT-4o Mini", "gpt-4o-mini"),

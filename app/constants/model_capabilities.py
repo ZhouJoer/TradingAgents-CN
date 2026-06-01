@@ -212,6 +212,24 @@ DEFAULT_MODEL_CAPABILITIES: Dict[str, Dict[str, Any]] = {
         "description": "DeepSeek V4 Flash 轻量高效模型，284B参数，1M上下文"
     },
 
+    # ==================== MiniMax (OpenAI Compatible) ====================
+    "MiniMax-M2.7-highspeed": {
+        "capability_level": 3,
+        "suitable_roles": [ModelRole.QUICK_ANALYSIS],
+        "features": [ModelFeature.TOOL_CALLING, ModelFeature.FAST_RESPONSE, ModelFeature.COST_EFFECTIVE],
+        "recommended_depths": ["快速", "基础", "标准"],
+        "performance_metrics": {"speed": 5, "cost": 4, "quality": 4},
+        "description": "MiniMax M2.7 HighSpeed，适合快速分析与工具调用"
+    },
+    "MiniMax-M2.7": {
+        "capability_level": 4,
+        "suitable_roles": [ModelRole.DEEP_ANALYSIS],
+        "features": [ModelFeature.TOOL_CALLING, ModelFeature.LONG_CONTEXT, ModelFeature.REASONING],
+        "recommended_depths": ["标准", "深度", "全面"],
+        "performance_metrics": {"speed": 4, "cost": 4, "quality": 5},
+        "description": "MiniMax M2.7，适合深度分析与多轮推理"
+    },
+
     # ==================== 百度文心 (Qianfan) ====================
     "ernie-3.5": {
         "capability_level": 2,
@@ -482,4 +500,3 @@ def parse_aggregator_model(model_name: str) -> Tuple[str, str]:
         parts = model_name.split("/", 1)
         return parts[0], parts[1]
     return "", model_name
-

@@ -57,7 +57,7 @@ def create_llm_by_provider(provider: str, model: str, backend_url: str, temperat
 
     normalized_provider = normalize_provider_key(provider)
 
-    if normalized_provider in {"openai", "siliconflow", "openrouter", "aihubmix", "ollama", "deepseek", "qwen", "glm", "custom_openai", "qianfan"}:
+    if normalized_provider in {"openai", "siliconflow", "openrouter", "aihubmix", "minimax", "ollama", "deepseek", "qwen", "glm", "custom_openai", "qianfan"}:
         if not api_key:
             if normalized_provider == "siliconflow":
                 api_key = os.getenv('SILICONFLOW_API_KEY')
@@ -269,7 +269,7 @@ class TradingAgentsGraph:
 
             logger.info(f"✅ [混合模式] LLM 实例创建成功")
 
-        elif normalized_provider in {"openai", "siliconflow", "openrouter", "aihubmix", "ollama"}:
+        elif normalized_provider in {"openai", "siliconflow", "openrouter", "aihubmix", "minimax", "ollama"}:
             provider = normalized_provider
             logger.info(f"🔧 [{provider}-快速模型] max_tokens={quick_max_tokens}, temperature={quick_temperature}, timeout={quick_timeout}s")
             logger.info(f"🔧 [{provider}-深度模型] max_tokens={deep_max_tokens}, temperature={deep_temperature}, timeout={deep_timeout}s")
