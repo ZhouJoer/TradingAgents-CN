@@ -23,6 +23,8 @@ class IndustryAnalysisRequest(BaseModel):
     )
     top_n: int = Field(5, ge=1, le=20, description="推荐股票数量")
     market: str = Field("CN", description="市场（目前仅支持CN）")
+    quick_analysis_model: Optional[str] = Field(None, description="快速分析模型（可选，默认系统推荐）")
+    deep_analysis_model: Optional[str] = Field(None, description="深度分析模型（可选，默认系统推荐）")
 
 
 class IndustryAnalysisTaskResponse(BaseModel):

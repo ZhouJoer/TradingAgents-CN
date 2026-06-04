@@ -11,6 +11,35 @@
  */
 
 /**
+ * 将后端返回的时间字符串解析为毫秒时间戳。
+ * 无时区后缀的 ISO 字符串按 UTC+8（与后端 now_tz 入库一致）处理。
+ */
+export function parseBackendDateTimeMs(dateStr: string | number | null | undefined): number | null {
+  if (!dateStr) return null
+
+  try {
+    if (typeof dateStr === 'number') {
+      const timestamp = dateStr < 10000000000 ? dateStr * 1000 : dateStr
+      return Number.isNaN(timestamp) ? null : timestamp
+    }
+
+    let timeStr = String(dateStr).trim()
+    const hasTimezone = timeStr.endsWith('Z') ||
+      timeStr.includes('+') ||
+      timeStr.includes('-', 10)
+
+    if (timeStr.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/) && !hasTimezone) {
+      timeStr += '+08:00'
+    }
+
+    const timestamp = new Date(timeStr).getTime()
+    return Number.isNaN(timestamp) ? null : timestamp
+  } catch {
+    return null
+  }
+}
+
+/**
  * 格式化时间字符串，自动处理时区转换
  * @param dateStr - 时间字符串或时间戳
  * @param options - 格式化选项

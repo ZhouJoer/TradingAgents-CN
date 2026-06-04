@@ -8,6 +8,8 @@ export interface IndustryAnalysisSubmitRequest {
   detail_level: IndustryAnalysisDetailLevel
   top_n: number
   market: 'CN'
+  quick_analysis_model?: string
+  deep_analysis_model?: string
 }
 
 export interface StockRecommendation {

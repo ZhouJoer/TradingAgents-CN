@@ -64,6 +64,15 @@
               </div>
             </el-form-item>
 
+            <div class="model-config-wrap">
+              <ModelConfig
+                v-model:quick-analysis-model="modelSettings.quickAnalysisModel"
+                v-model:deep-analysis-model="modelSettings.deepAnalysisModel"
+                :available-models="availableModels"
+                analysis-depth="3"
+              />
+            </div>
+
             <div class="form-actions">
               <el-button
                 type="primary"
@@ -407,6 +416,8 @@ import {
   type IndustryAnalysisTaskStatus,
   type StockRecommendation
 } from '@/api/industryAnalysis'
+import ModelConfig from '@/components/ModelConfig.vue'
+import { useAnalysisModelSettings } from '@/composables/useAnalysisModelSettings'
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -434,6 +445,13 @@ const formState = reactive({
   top_n: 5,
   market: 'CN' as const
 })
+
+const {
+  modelSettings,
+  availableModels,
+  initializeModelSettings,
+  getModelParameters
+} = useAnalysisModelSettings()
 
 const activeTab = ref('due-diligence')
 const submitting = ref(false)
@@ -619,17 +637,6 @@ const loadTaskDetail = async (taskId: string, options?: { silent?: boolean }) =>
     const response = await industryAnalysisApi.getResult(taskId)
     const task = response.data
 
-    // Detect stale running tasks (no update for 5+ minutes = likely server restart)
-    if ((task.status === 'pending' || task.status === 'running') && task.updated_at) {
-      const updatedAt = new Date(task.updated_at).getTime()
-      const now = Date.now()
-      const staleThresholdMs = 5 * 60 * 1000 // 5 minutes
-      if (now - updatedAt > staleThresholdMs) {
-        task.status = 'failed'
-        task.error = '任务超时或服务器已重启，请重新提交分析。'
-      }
-    }
-
     activeTask.value = task
     errorMessage.value = task.status === 'failed' ? task.error || '行业分析执行失败' : ''
     upsertHistoryTask(task)
@@ -678,7 +685,8 @@ const submitAnalysis = async () => {
       concept,
       detail_level: 'detailed',
       top_n: formState.top_n,
-      market: formState.market
+      market: formState.market,
+      ...getModelParameters()
     })
 
     const submittedTask = response.data
@@ -841,6 +849,7 @@ const deleteHistoryTask = async (taskId: string) => {
 }
 
 onMounted(() => {
+  void initializeModelSettings()
   void loadHistory()
 })
 
@@ -967,6 +976,14 @@ onBeforeUnmount(() => {
 
 .slider-wrap {
   padding: 0 8px;
+}
+
+.model-config-wrap {
+  margin: 8px 0 4px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  background: var(--el-fill-color-blank);
 }
 
 .form-actions,
