@@ -39,8 +39,8 @@
             <el-option label="失败" value="failed" />
           </el-select>
         </el-form-item>
-        <el-form-item label="股票">
-          <el-input v-model="filters.stock" placeholder="代码或名称" style="width: 160px" />
+        <el-form-item label="对象">
+          <el-input v-model="filters.stock" placeholder="股票代码/名称或概念" style="width: 180px" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="applyFilters" :loading="loading">查询</el-button>
@@ -61,7 +61,7 @@
         <el-card shadow="never"><div class="stat"><div class="value">{{ stats.failed }}</div><div class="label">失败</div></div></el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never"><div class="stat"><div class="value">{{ stats.uniqueStocks }}</div><div class="label">股票数</div></div></el-card>
+        <el-card shadow="never"><div class="stat"><div class="value">{{ stats.uniqueStocks }}</div><div class="label">对象数</div></div></el-card>
       </el-col>
     </el-row>
 
@@ -69,7 +69,7 @@
     <el-card class="list-card" shadow="never">
       <div class="list-header">
         <div class="left">
-          <el-input v-model="keyword" placeholder="搜索股票代码/名称" clearable style="width: 220px" />
+          <el-input v-model="keyword" placeholder="搜索任务对象/ID" clearable style="width: 220px" />
           <el-button @click="refreshList" :loading="loading">
             <el-icon><Refresh /></el-icon>
             刷新
@@ -86,8 +86,9 @@
       <el-table :data="filteredList" v-loading="loading" style="width: 100%" @selection-change="onSelectionChange">
         <el-table-column type="selection" width="50" />
         <el-table-column prop="task_id" label="任务ID" width="220" />
-        <el-table-column prop="stock_code" label="股票代码" width="120" />
-        <el-table-column prop="stock_name" label="股票名称" width="150" />
+        <el-table-column prop="task_type_label" label="类型" width="110" />
+        <el-table-column prop="stock_code" label="对象代码" width="120" />
+        <el-table-column prop="stock_name" label="对象名称" width="150" />
         <el-table-column label="状态" width="110">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
@@ -108,8 +109,8 @@
             <el-button v-if="row.status==='completed'" type="text" size="small" @click="openResult(row)">查看结果</el-button>
             <el-button v-if="row.status==='completed'" type="text" size="small" @click="openReport(row)">报告详情</el-button>
             <el-button v-if="row.status==='failed'" type="text" size="small" @click="showErrorDetail(row)">查看错误</el-button>
-            <el-button v-if="row.status==='failed'" type="text" size="small" @click="retryTask(row)">重试</el-button>
-            <el-button v-if="row.status==='processing' || row.status==='running' || row.status==='pending'" type="text" size="small" @click="markAsFailed(row)">标记失败</el-button>
+            <el-button v-if="row.status==='failed' && row.task_kind !== 'industry'" type="text" size="small" @click="retryTask(row)">重试</el-button>
+            <el-button v-if="row.task_kind !== 'industry' && (row.status==='processing' || row.status==='running' || row.status==='pending')" type="text" size="small" @click="markAsFailed(row)">标记失败</el-button>
             <el-button type="text" size="small" @click="deleteTask(row)" style="color: #f56c6c;">删除</el-button>
           </template>
         </el-table-column>
@@ -149,6 +150,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { List, Refresh, Download } from '@element-plus/icons-vue'
 import { analysisApi } from '@/api/analysis'
+import { industryAnalysisApi, type IndustryAnalysisTask } from '@/api/industryAnalysis'
 import TaskResultDialog from '@/components/Global/TaskResultDialog.vue'
 import TaskReportDialog from '@/components/Global/TaskReportDialog.vue'
 
@@ -168,6 +170,11 @@ const filters = ref<{ dateRange: string[]; market: string; status: string; stock
   dateRange: [], market: '', status: '', stock: ''
 })
 const stats = ref({ total: 0, completed: 0, failed: 0, uniqueStocks: 0 })
+
+type TaskRow = Record<string, any> & {
+  task_kind?: 'stock' | 'industry'
+  task_type_label?: string
+}
 
 
 // WebSocket 连接管理
@@ -250,6 +257,66 @@ const statusParam = computed(() => {
   return activeTab.value
 })
 
+const normalizeTaskStatus = (status?: string) => {
+  if (status === 'running') return 'processing'
+  return status || 'pending'
+}
+
+const normalizeIndustryTask = (task: IndustryAnalysisTask): TaskRow => ({
+  ...task,
+  task_kind: 'industry',
+  task_type_label: '行业/概念',
+  status: normalizeTaskStatus(task.status),
+  raw_status: task.status,
+  stock_code: '概念',
+  stock_name: task.concept,
+  stock_symbol: task.concept,
+  market_type: task.market === 'CN' ? 'A股' : task.market,
+  progress: task.status === 'completed' ? 100 : (task.progress || 0),
+  message: task.progress_message || task.error || '',
+  start_time: task.created_at,
+  updated_at: task.updated_at || task.created_at
+})
+
+const normalizeStockTask = (task: any): TaskRow => ({
+  ...task,
+  task_kind: 'stock',
+  task_type_label: '个股分析',
+  status: normalizeTaskStatus(task.status),
+  stock_code: task.stock_code || task.stock_symbol || task.symbol || '',
+  stock_name: task.stock_name || task.stock_symbol || task.symbol || ''
+})
+
+const taskTimeValue = (task: TaskRow) => {
+  const value = task.updated_at || task.start_time || task.created_at
+  return value ? new Date(value).getTime() || 0 : 0
+}
+
+const matchesTaskStatus = (task: TaskRow, selectedStatus?: string) => {
+  if (!selectedStatus) return true
+  if (selectedStatus === 'processing') {
+    return task.status === 'processing' || task.status === 'pending' || task.raw_status === 'running'
+  }
+  return task.status === selectedStatus
+}
+
+const matchesIndustryFilters = (task: TaskRow) => {
+  const selectedStatus = filters.value.status || statusParam.value
+  if (!matchesTaskStatus(task, selectedStatus)) return false
+
+  if (filters.value.market && task.market_type !== filters.value.market) return false
+  if (filters.value.stock) {
+    const keyword = filters.value.stock.toLowerCase()
+    const haystack = `${task.stock_code || ''} ${task.stock_name || ''} ${task.concept || ''}`.toLowerCase()
+    if (!haystack.includes(keyword)) return false
+  }
+  if (filters.value.dateRange && filters.value.dateRange.length === 2) {
+    const created = String(task.created_at || '').slice(0, 10)
+    if (created < filters.value.dateRange[0] || created > filters.value.dateRange[1]) return false
+  }
+  return true
+}
+
 const loadList = async () => {
   loading.value = true
   try {
@@ -268,7 +335,7 @@ const loadList = async () => {
 
     const res = await analysisApi.getHistory(params)
     const body = (res as any)?.data?.data || (res as any)?.data || {}
-    let tasks = body.tasks || body.analyses || []
+    let tasks = (body.tasks || body.analyses || []).map(normalizeStockTask)
 
     // 当无筛选条件且历史接口为空时，兜底用任务列表接口（保证能看到数据）
     const noExtraFilters = !filters.value.market && !filters.value.stock && (!filters.value.dateRange || filters.value.dateRange.length === 0)
@@ -280,27 +347,37 @@ const loadList = async () => {
           offset: (currentPage.value - 1) * pageSize.value
         })
         const body2 = (res2 as any)?.data?.data || {}
-        tasks = body2.tasks || []
+        tasks = (body2.tasks || []).map(normalizeStockTask)
         total.value = body2.total ?? tasks.length
       } catch {}
     } else {
       total.value = body.total ?? tasks.length
     }
 
-    list.value = tasks
+    let industryTasks: TaskRow[] = []
+    try {
+      const industryRes = await industryAnalysisApi.getHistory(100)
+      industryTasks = (industryRes.data || []).map(normalizeIndustryTask).filter(matchesIndustryFilters)
+    } catch {
+      industryTasks = []
+    }
+
+    const mergedTasks = [...tasks, ...industryTasks].sort((a, b) => taskTimeValue(b) - taskTimeValue(a))
+    list.value = mergedTasks
+    total.value = (total.value || tasks.length) + industryTasks.length
 
     // 为运行中的任务连接 WebSocket
-    tasks.forEach((task: any) => {
-      if (task.status === 'processing' || task.status === 'running' || task.status === 'pending') {
+    mergedTasks.forEach((task: any) => {
+      if (task.task_kind !== 'industry' && (task.status === 'processing' || task.status === 'running' || task.status === 'pending')) {
         connectTaskWebSocket(task.task_id)
       }
     })
 
     // 统计
-    const completed = tasks.filter((x:any) => x.status === 'completed').length
-    const failed = tasks.filter((x:any) => x.status === 'failed').length
-    const uniqueStocks = new Set(tasks.map((x:any) => x.stock_code || x.stock_symbol)).size
-    stats.value = { total: tasks.length, completed, failed, uniqueStocks }
+    const completed = mergedTasks.filter((x:any) => x.status === 'completed').length
+    const failed = mergedTasks.filter((x:any) => x.status === 'failed').length
+    const uniqueStocks = new Set(mergedTasks.map((x:any) => x.stock_code || x.stock_symbol || x.concept)).size
+    stats.value = { total: mergedTasks.length, completed, failed, uniqueStocks }
   } catch (e:any) {
     ElMessage.error(e?.message || '加载失败')
   } finally {
@@ -345,6 +422,11 @@ const currentRow = ref<any>(null)
 
 const openResult = async (row:any) => {
   currentRow.value = row
+  if (row.task_kind === 'industry') {
+    void router.push({ name: 'IndustryAnalysis', query: { task_id: row.task_id } })
+    return
+  }
+
   try {
     const res = await analysisApi.getTaskResult(row.task_id)
     const body = (res as any)?.data?.data || {}
@@ -356,6 +438,11 @@ const openResult = async (row:any) => {
 }
 
 const openReport = (row:any): void => {
+  if (row?.task_kind === 'industry') {
+    void router.push({ name: 'IndustryAnalysis', query: { task_id: row.task_id } })
+    return
+  }
+
   const id = row?.task_id || row?.analysis_id || row?.id
   if (!id) {
     ElMessage.warning('未找到报告ID')
@@ -369,6 +456,19 @@ const retryTask = (_row:any) => { ElMessage.info('重试功能待实现') }
 // 显示错误详情
 const showErrorDetail = async (row: any) => {
   try {
+    if (row.task_kind === 'industry') {
+      await ElMessageBox.alert(
+        row.error || row.message || '未知错误',
+        '错误详情',
+        {
+          confirmButtonText: '确定',
+          type: 'error',
+          customStyle: { width: '600px' }
+        }
+      )
+      return
+    }
+
     const taskId = row.task_id || row.analysis_id || row.id
     if (!taskId) {
       ElMessage.error('任务ID不存在')
@@ -455,7 +555,11 @@ const deleteTask = async (row: any) => {
     }
 
     loading.value = true
-    await analysisApi.deleteTask(taskId)
+    if (row.task_kind === 'industry') {
+      await industryAnalysisApi.delete(taskId)
+    } else {
+      await analysisApi.deleteTask(taskId)
+    }
     ElMessage.success('任务已删除')
     await loadList()
   } catch (e: any) {
@@ -534,4 +638,3 @@ const formatTime = (t:string) => t ? formatDateTime(t) : '-'
   .pagination-wrapper { display:flex; justify-content:center; margin-top: 16px; }
 }
 </style>
-

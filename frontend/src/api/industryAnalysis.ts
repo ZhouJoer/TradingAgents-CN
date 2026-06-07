@@ -35,6 +35,91 @@ export interface StockRecommendation {
   key_metrics: Record<string, any>
 }
 
+export interface CandidateTraceMapping {
+  user_concept: string
+  board_concepts: string[]
+  board_industries: string[]
+  keywords: string[]
+  reasoning: string
+}
+
+export interface CandidateTraceBoardFetch {
+  board_name: string
+  board_type: string
+  fetched_count: number
+  valid_count: number
+  failed: boolean
+  reason: string
+}
+
+export interface CandidateTraceEnrichment {
+  source: string
+  attempted_count: number
+  hit_count: number
+  fields: string[]
+  note: string
+}
+
+export interface CandidateTraceFilterItem {
+  code: string
+  name: string
+  industry: string
+  included: boolean
+  reason: string
+  reason_detail: string
+  rule_score: number
+  source_boards: string[]
+  key_metrics: Record<string, any>
+}
+
+export interface CandidateTrace {
+  mapping: CandidateTraceMapping
+  board_fetches: CandidateTraceBoardFetch[]
+  enrichment: CandidateTraceEnrichment[]
+  original_count: number
+  filtered_count: number
+  excluded_count: number
+  filter_summary: Record<string, any>
+  filter_details: CandidateTraceFilterItem[]
+  selected_candidates: CandidateTraceFilterItem[]
+}
+
+export interface IndustryLogicSections {
+  supply_chain: string
+  policy: string
+  cycle: string
+  demand: string
+  competition: string
+  risks: string
+}
+
+export interface StockSelectionSections {
+  leaders: string
+  growth_beta: string
+  valuation_repair: string
+  high_risk: string
+  watchlist: string
+}
+
+export interface SupplyChainSegment {
+  segment_key: string
+  segment_name: string
+  business: string
+  benefit_logic: string
+  key_indicators: string
+  risks: string
+  related_stocks: StockRecommendation[]
+}
+
+export interface RecommendationGroup {
+  group_key: string
+  group_name: string
+  description: string
+  suitable_style: string
+  main_risks: string
+  stocks: StockRecommendation[]
+}
+
 export interface IndustryAnalysisResult {
   concept: string
   detail_level: IndustryAnalysisDetailLevel
@@ -53,6 +138,11 @@ export interface IndustryAnalysisResult {
   portfolio_advice: string
   tracking_indicators: string
   conclusion: string
+  candidate_trace?: CandidateTrace | null
+  industry_logic_sections?: IndustryLogicSections | null
+  stock_selection_sections?: StockSelectionSections | null
+  supply_chain_analysis?: SupplyChainSegment[]
+  recommendation_groups?: RecommendationGroup[]
   // Meta
   analysis_time: number
   llm_calls: number
@@ -72,6 +162,7 @@ export interface IndustryAnalysisTask {
   progress: number
   progress_message: string
   concept: string
+  market?: 'CN' | string
   detail_level: IndustryAnalysisDetailLevel
   top_n: number
   result: IndustryAnalysisResult | null

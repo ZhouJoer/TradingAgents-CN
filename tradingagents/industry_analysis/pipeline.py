@@ -12,6 +12,11 @@ from typing import Any, Callable, Optional
 
 try:
     from app.models.industry_analysis import (
+        CandidateTrace,
+        CandidateTraceBoardFetch,
+        CandidateTraceEnrichment,
+        CandidateTraceFilterItem,
+        CandidateTraceMapping,
         ConceptMappingResult,
         IndustryAnalysisRequest,
         IndustryAnalysisResult,
@@ -24,6 +29,11 @@ except Exception:
         raise ImportError(f"Unable to load industry analysis models from {model_path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    CandidateTrace = module.CandidateTrace
+    CandidateTraceBoardFetch = module.CandidateTraceBoardFetch
+    CandidateTraceEnrichment = module.CandidateTraceEnrichment
+    CandidateTraceFilterItem = module.CandidateTraceFilterItem
+    CandidateTraceMapping = module.CandidateTraceMapping
     ConceptMappingResult = module.ConceptMappingResult
     IndustryAnalysisRequest = module.IndustryAnalysisRequest
     IndustryAnalysisResult = module.IndustryAnalysisResult
@@ -34,8 +44,9 @@ from tradingagents.graph.trading_graph import create_llm_by_provider
 from tradingagents.utils.logging_manager import get_logger
 
 from .candidate_fetcher import CandidateFetcher
-from .candidate_filter import CandidateFilter
+from .candidate_filter import CandidateFilter, FilterResult
 from .concept_mapper import ConceptMapper
+from tradingagents.utils.structured_output import extract_json_text, loads_json_object
 from .stock_comparator import StockComparator
 
 logger = get_logger("industry_analysis")
@@ -116,6 +127,21 @@ class IndustryAnalysisPipeline:
                     # Use mapped_boards if available; otherwise derive from concept keywords
                     fallback_boards = mapped_boards or (mapping.keywords if mapping else [concept])
                     candidates = await self._llm_suggest_candidates(quick_llm, concept, fallback_boards)
+                    candidate_fetcher.last_fetch_trace.append({
+                        "board_name": concept,
+                        "board_type": "fallback",
+                        "fetched_count": len(candidates),
+                        "valid_count": len(candidates),
+                        "failed": False if candidates else True,
+                        "reason": "数据源无候选结果，使用LLM生成候选并尝试从MongoDB验证",
+                    })
+                    candidate_fetcher.last_enrichment_trace.append({
+                        "source": "llm_fallback_mongodb_validation",
+                        "attempted_count": len(candidates),
+                        "hit_count": sum(1 for item in candidates if item.price is not None or item.industry),
+                        "fields": ["name", "industry", "price", "pct_chg"],
+                        "note": "LLM仅用于生成候选代码，行情与基础信息来自可用数据源验证",
+                    })
 
                 if not candidates:
                     raise ValueError(
@@ -123,7 +149,8 @@ class IndustryAnalysisPipeline:
                     )
 
                 await self._report_progress(progress_callback, 35, "正在过滤候选股票")
-                filtered = self._filter_candidates(candidate_filter, candidates, request.top_n)
+                filter_result = self._filter_candidates(candidate_filter, candidates, request.top_n)
+                filtered = filter_result.selected
 
                 if not filtered:
                     # If filter removes all, use unfiltered candidates
@@ -132,7 +159,14 @@ class IndustryAnalysisPipeline:
 
                 # Use mapped_boards for display; if empty, use concept as label
                 display_boards = mapped_boards or [concept]
-                return display_boards, len(candidates), filtered
+                candidate_trace = self._build_candidate_trace(
+                    mapping=mapping,
+                    candidate_fetcher=candidate_fetcher,
+                    candidates=candidates,
+                    filter_result=filter_result,
+                    selected_candidates=filtered,
+                )
+                return display_boards, len(candidates), filtered, candidate_trace
 
             # Run both paths in parallel
             dd_report, data_result = await asyncio.gather(
@@ -140,7 +174,7 @@ class IndustryAnalysisPipeline:
                 _run_data_pipeline(),
             )
 
-            mapped_boards, candidate_count, filtered_candidates = data_result
+            mapped_boards, candidate_count, filtered_candidates, candidate_trace = data_result
             filtered_count = len(filtered_candidates)
 
             # ============================================================
@@ -174,6 +208,11 @@ class IndustryAnalysisPipeline:
                 portfolio_advice=two_stage_result.portfolio_advice,
                 tracking_indicators=two_stage_result.tracking_indicators,
                 conclusion=two_stage_result.conclusion,
+                candidate_trace=candidate_trace,
+                industry_logic_sections=two_stage_result.industry_logic_sections,
+                stock_selection_sections=two_stage_result.stock_selection_sections,
+                supply_chain_analysis=two_stage_result.supply_chain_analysis,
+                recommendation_groups=two_stage_result.recommendation_groups,
                 analysis_time=round(time.perf_counter() - start_time, 4),
                 llm_calls=3,  # 1 concept mapping + 1 DD + 1 stock selection
                 data_date=date.today().isoformat(),
@@ -263,14 +302,94 @@ class IndustryAnalysisPipeline:
         candidate_filter: CandidateFilter,
         candidates: list[StockCandidate],
         top_n: int,
-    ) -> list[StockCandidate]:
+    ) -> FilterResult:
         try:
-            return candidate_filter.filter(
+            return candidate_filter.filter_with_trace(
                 candidates,
                 max_output=max(top_n, getattr(candidate_filter, "max_candidates", 30)),
             )
         except Exception as exc:
             raise RuntimeError(f"候选股票过滤失败: {exc}") from exc
+
+    def _build_candidate_trace(
+        self,
+        mapping: ConceptMappingResult,
+        candidate_fetcher: CandidateFetcher,
+        candidates: list[StockCandidate],
+        filter_result: FilterResult,
+        selected_candidates: list[StockCandidate],
+    ) -> CandidateTrace:
+        selected_codes = {candidate.code for candidate in selected_candidates}
+        filter_details = [
+            CandidateTraceFilterItem(
+                code=item.code,
+                name=item.name,
+                industry=item.industry,
+                included=item.included or item.code in selected_codes,
+                reason="not_excluded" if item.code in selected_codes else item.reason,
+                reason_detail="进入选股阶段" if item.code in selected_codes else item.reason_detail,
+                rule_score=item.rule_score,
+                source_boards=item.source_boards,
+                key_metrics=item.key_metrics,
+            )
+            for item in filter_result.details
+        ]
+
+        detail_codes = {item.code for item in filter_details}
+        for candidate in selected_candidates:
+            if candidate.code in detail_codes:
+                continue
+            filter_details.append(self._trace_item_from_candidate(candidate, included=True))
+
+        selected_details = [item for item in filter_details if item.included]
+        return CandidateTrace(
+            mapping=CandidateTraceMapping(
+                user_concept=mapping.user_concept,
+                board_concepts=list(mapping.board_concepts or []),
+                board_industries=list(mapping.board_industries or []),
+                keywords=list(mapping.keywords or []),
+                reasoning=mapping.reasoning or "",
+            ),
+            board_fetches=[
+                CandidateTraceBoardFetch(**item)
+                for item in getattr(candidate_fetcher, "last_fetch_trace", [])
+            ],
+            enrichment=[
+                CandidateTraceEnrichment(**item)
+                for item in getattr(candidate_fetcher, "last_enrichment_trace", [])
+            ],
+            original_count=len(candidates),
+            filtered_count=len(selected_candidates),
+            excluded_count=max(0, len(candidates) - len(selected_candidates)),
+            filter_summary={
+                "excluded_counts": filter_result.excluded_counts,
+                "score_distribution": filter_result.score_distribution,
+            },
+            filter_details=filter_details,
+            selected_candidates=selected_details,
+        )
+
+    def _trace_item_from_candidate(
+        self,
+        candidate: StockCandidate,
+        included: bool,
+    ) -> CandidateTraceFilterItem:
+        metrics = candidate.model_dump()
+        metric_names = [
+            "pe", "pb", "roe", "total_mv", "circ_mv", "price", "pct_chg",
+            "pct_chg_20d", "turnover_rate", "volume_ratio",
+        ]
+        return CandidateTraceFilterItem(
+            code=candidate.code,
+            name=candidate.name,
+            industry=candidate.industry,
+            included=included,
+            reason="not_excluded" if included else "data_missing",
+            reason_detail="进入选股阶段" if included else "数据缺失",
+            rule_score=candidate.match_score,
+            source_boards=list(candidate.source_boards or []),
+            key_metrics={key: metrics.get(key) for key in metric_names if metrics.get(key) is not None},
+        )
 
     async def _report_progress(
         self,
@@ -336,19 +455,7 @@ class IndustryAnalysisPipeline:
             if isinstance(response_text, list):
                 response_text = "\n".join(str(item) for item in response_text)
 
-            import json as json_mod
-            import re as re_mod
-            json_text = response_text.strip()
-            fenced = re_mod.search(r"```(?:json)?\s*(\{.*\})\s*```", json_text, re_mod.DOTALL)
-            if fenced:
-                json_text = fenced.group(1)
-            else:
-                start = json_text.find("{")
-                end = json_text.rfind("}")
-                if start != -1 and end > start:
-                    json_text = json_text[start:end + 1]
-
-            payload = json_mod.loads(json_text)
+            payload = loads_json_object(extract_json_text(response_text))
             stocks_raw = payload.get("stocks", [])
 
             candidates: list[StockCandidate] = []

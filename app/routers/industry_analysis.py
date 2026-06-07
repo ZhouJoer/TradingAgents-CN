@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from starlette.responses import StreamingResponse
@@ -8,6 +8,7 @@ from starlette.responses import StreamingResponse
 from app.models.industry_analysis import IndustryAnalysisRequest
 from app.routers.auth_db import get_current_user
 from app.services.industry_analysis_service import get_industry_analysis_service
+from app.utils.industry_analysis_report import build_industry_markdown_report
 
 router = APIRouter(tags=["industry-analysis"])
 logger = logging.getLogger("webapi")
@@ -17,92 +18,6 @@ def _ensure_task_access(task: Optional[dict], user_id: str) -> dict:
     if not task or task.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="任务不存在")
     return task
-
-
-def _stringify_report_section(value: Any) -> str:
-    if isinstance(value, str):
-        return value.strip()
-    return ""
-
-
-def _build_recommendations_markdown(recommendations: Any) -> str:
-    if not isinstance(recommendations, list):
-        return ""
-
-    lines = []
-    for item in recommendations:
-        if not isinstance(item, dict):
-            continue
-
-        rank = item.get("rank")
-        name = item.get("name") or item.get("code") or "未知标的"
-        code = item.get("code") or ""
-        score = item.get("score")
-        summary = item.get("summary") or ""
-
-        title = f"{rank}. {name}" if rank is not None else name
-        if code:
-            title = f"{title} ({code})"
-        if score is not None:
-            title = f"{title} - 评分: {score}"
-
-        lines.append(f"- {title}")
-        if summary:
-            lines.append(f"  - 推荐理由: {summary}")
-
-    return "\n".join(lines)
-
-
-def _build_markdown_report(task: dict) -> str:
-    result = task.get("result")
-    if not isinstance(result, dict):
-        raise HTTPException(status_code=400, detail="任务结果尚未生成")
-
-    due_diligence_report = _stringify_report_section(result.get("due_diligence_report"))
-    if not due_diligence_report:
-        due_diligence_report = _stringify_report_section(result.get("market_overview"))
-
-    stock_selection_report = _stringify_report_section(result.get("stock_selection_report"))
-    if not stock_selection_report:
-        stock_selection_parts = []
-        selection_reasoning = _stringify_report_section(result.get("selection_reasoning"))
-        if selection_reasoning:
-            stock_selection_parts.append(selection_reasoning)
-
-        recommendations_markdown = _build_recommendations_markdown(result.get("recommendations"))
-        if recommendations_markdown:
-            stock_selection_parts.extend(["### 推荐标的", "", recommendations_markdown])
-
-        risk_warning = _stringify_report_section(result.get("risk_warning"))
-        if risk_warning:
-            stock_selection_parts.extend(["", "### 风险提示", "", risk_warning])
-
-        stock_selection_report = "\n".join(part for part in stock_selection_parts if part is not None).strip()
-
-    if not due_diligence_report and not stock_selection_report:
-        raise HTTPException(status_code=400, detail="任务结果中没有可下载的报告内容")
-
-    content_parts = [
-        f"# 行业分析报告：{task.get('concept') or task.get('task_id')}",
-        "",
-        f"- 任务ID: {task.get('task_id', '')}",
-        f"- 分析主题: {task.get('concept', '')}",
-        f"- 任务状态: {task.get('status', '')}",
-        f"- 分析粒度: {task.get('detail_level', '')}",
-    ]
-
-    if task.get("completed_at"):
-        content_parts.append(f"- 完成时间: {task['completed_at']}")
-
-    content_parts.extend(["", "---", ""])
-
-    if due_diligence_report:
-        content_parts.extend(["## 尽职调查报告", "", due_diligence_report, ""])
-
-    if stock_selection_report:
-        content_parts.extend(["## 选股报告", "", stock_selection_report, ""])
-
-    return "\n".join(content_parts).strip() + "\n"
 
 
 def _stream_bytes(content: bytes):
@@ -223,7 +138,10 @@ async def download_industry_analysis_report(
                 headers={"Content-Disposition": f'attachment; filename="{filename_base}.json"'},
             )
 
-        markdown_content = _build_markdown_report(task)
+        try:
+            markdown_content = build_industry_markdown_report(task)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         if download_format == "markdown":
             return StreamingResponse(

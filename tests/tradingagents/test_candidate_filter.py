@@ -16,6 +16,7 @@ module_path = Path(__file__).resolve().parents[2] / "tradingagents" / "industry_
 spec = importlib.util.spec_from_file_location("candidate_filter_under_test", module_path)
 candidate_filter_module = importlib.util.module_from_spec(spec)
 assert spec is not None and spec.loader is not None
+sys.modules["candidate_filter_under_test"] = candidate_filter_module
 spec.loader.exec_module(candidate_filter_module)
 
 CandidateFilter = candidate_filter_module.CandidateFilter
@@ -30,14 +31,22 @@ class CandidateFilterTests(TestCase):
         candidates = [
             StockCandidate(code="000001", name="*ST测试", price=10.0, total_mv=100.0),
             StockCandidate(code="000002", name="测试退市", price=10.0, total_mv=100.0),
-            StockCandidate(code="000003", name="正常A", price=None, total_mv=100.0),
+            StockCandidate(code="000003", name="正常A", price=0.0, total_mv=100.0),
             StockCandidate(code="000004", name="正常B", price=12.0, total_mv=20.0),
             StockCandidate(code="000005", name="正常C", price=15.0, total_mv=120.0, pe=20.0, roe=18.0),
         ]
 
         result = self.filter.filter(candidates)
+        traced = self.filter.filter_with_trace(candidates)
 
         self.assertEqual([candidate.code for candidate in result], ["000005"])
+        self.assertEqual([candidate.code for candidate in traced.selected], ["000005"])
+        reasons = {item.code: item.reason for item in traced.details}
+        self.assertEqual(reasons["000001"], "st_or_special_treatment")
+        self.assertEqual(reasons["000002"], "delisted")
+        self.assertEqual(reasons["000003"], "suspended_or_invalid_price")
+        self.assertEqual(reasons["000004"], "small_market_cap")
+        self.assertEqual(reasons["000005"], "not_excluded")
 
     def test_missing_optional_metrics_are_treated_neutrally(self) -> None:
         candidates = [

@@ -70,6 +70,60 @@ class StockCandidate(BaseModel):
     match_score: float = Field(0.0, description="概念匹配度评分")
 
 
+class CandidateTraceMapping(BaseModel):
+    """候选池追踪：概念映射阶段"""
+    user_concept: str = Field("", description="用户输入")
+    board_concepts: List[str] = Field(default_factory=list, description="命中的概念板块")
+    board_industries: List[str] = Field(default_factory=list, description="命中的行业板块")
+    keywords: List[str] = Field(default_factory=list, description="相关关键词")
+    reasoning: str = Field("", description="映射理由")
+
+
+class CandidateTraceBoardFetch(BaseModel):
+    """候选池追踪：板块抓取阶段"""
+    board_name: str = Field("", description="板块名称")
+    board_type: str = Field("", description="板块类型：concept/industry/fallback")
+    fetched_count: int = Field(0, description="抓取到的原始数量")
+    valid_count: int = Field(0, description="解析出的有效股票数量")
+    failed: bool = Field(False, description="是否抓取失败")
+    reason: str = Field("", description="失败或补充说明")
+
+
+class CandidateTraceEnrichment(BaseModel):
+    """候选池追踪：数据补全阶段"""
+    source: str = Field("", description="数据源")
+    attempted_count: int = Field(0, description="尝试补全数量")
+    hit_count: int = Field(0, description="命中数量")
+    fields: List[str] = Field(default_factory=list, description="补全字段")
+    note: str = Field("", description="补充说明")
+
+
+class CandidateTraceFilterItem(BaseModel):
+    """候选池追踪：单只股票过滤结果"""
+    code: str = Field("", description="股票代码")
+    name: str = Field("", description="股票名称")
+    industry: str = Field("", description="所属行业")
+    included: bool = Field(False, description="是否进入选股阶段")
+    reason: str = Field("not_excluded", description="过滤原因枚举")
+    reason_detail: str = Field("", description="过滤原因说明")
+    rule_score: float = Field(0.0, description="规则评分")
+    source_boards: List[str] = Field(default_factory=list, description="来源板块")
+    key_metrics: Dict[str, Any] = Field(default_factory=dict, description="关键指标快照")
+
+
+class CandidateTrace(BaseModel):
+    """候选池透明度追踪信息"""
+    mapping: CandidateTraceMapping = Field(default_factory=CandidateTraceMapping)
+    board_fetches: List[CandidateTraceBoardFetch] = Field(default_factory=list)
+    enrichment: List[CandidateTraceEnrichment] = Field(default_factory=list)
+    original_count: int = Field(0, description="初始候选数量")
+    filtered_count: int = Field(0, description="进入选股阶段的数量")
+    excluded_count: int = Field(0, description="被剔除数量")
+    filter_summary: Dict[str, Any] = Field(default_factory=dict, description="过滤汇总")
+    filter_details: List[CandidateTraceFilterItem] = Field(default_factory=list)
+    selected_candidates: List[CandidateTraceFilterItem] = Field(default_factory=list)
+
+
 class StockRecommendation(BaseModel):
     """单只股票推荐结果"""
     rank: int = Field(..., description="排名")
@@ -96,6 +150,46 @@ class StockRecommendation(BaseModel):
     key_metrics: Dict[str, Any] = Field(default_factory=dict, description="关键指标")
 
 
+class IndustryLogicSections(BaseModel):
+    """第一层：行业逻辑结构化输出"""
+    supply_chain: str = Field("", description="产业链")
+    policy: str = Field("", description="政策")
+    cycle: str = Field("", description="景气度/周期")
+    demand: str = Field("", description="需求驱动")
+    competition: str = Field("", description="竞争格局")
+    risks: str = Field("", description="风险")
+
+
+class StockSelectionSections(BaseModel):
+    """第二层：选股逻辑结构化输出"""
+    leaders: str = Field("", description="龙头逻辑")
+    growth_beta: str = Field("", description="弹性标的逻辑")
+    valuation_repair: str = Field("", description="低估修复逻辑")
+    high_risk: str = Field("", description="高风险标的逻辑")
+    watchlist: str = Field("", description="观察名单逻辑")
+
+
+class SupplyChainSegment(BaseModel):
+    """产业链环节分析"""
+    segment_key: str = Field("", description="环节键名")
+    segment_name: str = Field("", description="环节名称")
+    business: str = Field("", description="主要业务")
+    benefit_logic: str = Field("", description="受益逻辑")
+    key_indicators: str = Field("", description="关键指标")
+    risks: str = Field("", description="主要风险")
+    related_stocks: List[StockRecommendation] = Field(default_factory=list, description="相关股票")
+
+
+class RecommendationGroup(BaseModel):
+    """分组推荐"""
+    group_key: str = Field("", description="分组键名")
+    group_name: str = Field("", description="分组名称")
+    description: str = Field("", description="分组说明")
+    suitable_style: str = Field("", description="适合投资风格")
+    main_risks: str = Field("", description="主要风险")
+    stocks: List[StockRecommendation] = Field(default_factory=list, description="股票列表")
+
+
 class IndustryAnalysisResult(BaseModel):
     """行业分析最终结果"""
     concept: str = Field(..., description="分析的概念/行业")
@@ -119,6 +213,12 @@ class IndustryAnalysisResult(BaseModel):
     portfolio_advice: str = Field("", description="组合建议（Markdown）")
     tracking_indicators: str = Field("", description="跟踪指标（Markdown）")
     conclusion: str = Field("", description="最终结论（Markdown）")
+    # 结构化增强结果（向后兼容，可为空）
+    candidate_trace: Optional[CandidateTrace] = Field(None, description="候选池追踪信息")
+    industry_logic_sections: Optional[IndustryLogicSections] = Field(None, description="行业逻辑结构化分层")
+    stock_selection_sections: Optional[StockSelectionSections] = Field(None, description="选股逻辑结构化分层")
+    supply_chain_analysis: List[SupplyChainSegment] = Field(default_factory=list, description="产业链环节分析")
+    recommendation_groups: List[RecommendationGroup] = Field(default_factory=list, description="分组推荐")
     # 元信息
     analysis_time: float = Field(0.0, description="分析耗时(秒)")
     llm_calls: int = Field(0, description="LLM调用次数")

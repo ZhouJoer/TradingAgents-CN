@@ -5,8 +5,9 @@ from __future__ import annotations
 import importlib.util
 import math
 import statistics
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from tradingagents.utils.logging_manager import get_logger
 
@@ -30,6 +31,36 @@ def _load_stock_candidate_model():
 
 StockCandidate = _load_stock_candidate_model()
 logger = get_logger("industry_analysis")
+
+
+FILTER_REASON_ST_OR_SPECIAL_TREATMENT = "st_or_special_treatment"
+FILTER_REASON_DELISTED = "delisted"
+FILTER_REASON_SUSPENDED_OR_INVALID_PRICE = "suspended_or_invalid_price"
+FILTER_REASON_SMALL_MARKET_CAP = "small_market_cap"
+FILTER_REASON_LOW_RULE_SCORE = "low_rule_score"
+FILTER_REASON_DATA_MISSING = "data_missing"
+FILTER_REASON_NOT_EXCLUDED = "not_excluded"
+
+
+@dataclass
+class FilterTraceItem:
+    code: str
+    name: str = ""
+    industry: str = ""
+    included: bool = False
+    reason: str = FILTER_REASON_NOT_EXCLUDED
+    reason_detail: str = ""
+    rule_score: float = 0.0
+    source_boards: List[str] = field(default_factory=list)
+    key_metrics: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class FilterResult:
+    selected: List[Any] = field(default_factory=list)
+    details: List[FilterTraceItem] = field(default_factory=list)
+    excluded_counts: Dict[str, int] = field(default_factory=dict)
+    score_distribution: Dict[str, Any] = field(default_factory=dict)
 
 
 class CandidateFilter:
@@ -65,33 +96,60 @@ class CandidateFilter:
 
     def filter(self, candidates: List[StockCandidate], max_output: int = 30) -> List[StockCandidate]:
         """按规则过滤候选股并返回综合评分最高的结果。"""
+        return self.filter_with_trace(candidates, max_output=max_output).selected
+
+    def filter_with_trace(self, candidates: List[StockCandidate], max_output: int = 30) -> FilterResult:
+        """按规则过滤候选股，并返回可展示的过滤明细。"""
         if not candidates:
             logger.info("候选股过滤完成: 输入=0, 输出=0")
-            return []
+            return FilterResult(
+                excluded_counts=self._empty_excluded_counts(),
+                score_distribution={},
+            )
 
-        excluded = {
-            "st": 0,
-            "delisted": 0,
-            "suspended": 0,
-            "small_cap": 0,
-        }
+        excluded = self._empty_excluded_counts()
         survivors: List[StockCandidate] = []
+        details_by_code: Dict[str, FilterTraceItem] = {}
 
         for candidate in candidates:
             name = (candidate.name or "").upper()
             if "*ST" in name or "ST" in name:
-                excluded["st"] += 1
+                excluded[FILTER_REASON_ST_OR_SPECIAL_TREATMENT] += 1
+                details_by_code[candidate.code] = self._build_trace_item(
+                    candidate,
+                    included=False,
+                    reason=FILTER_REASON_ST_OR_SPECIAL_TREATMENT,
+                    reason_detail="股票名称包含ST或*ST标识",
+                )
                 continue
             if "退" in (candidate.name or ""):
-                excluded["delisted"] += 1
+                excluded[FILTER_REASON_DELISTED] += 1
+                details_by_code[candidate.code] = self._build_trace_item(
+                    candidate,
+                    included=False,
+                    reason=FILTER_REASON_DELISTED,
+                    reason_detail="股票名称包含退市相关标识",
+                )
                 continue
             # price=None 可能是数据获取失败（非停牌），不排除
             if candidate.price is not None and candidate.price <= 0:
-                excluded["suspended"] += 1
+                excluded[FILTER_REASON_SUSPENDED_OR_INVALID_PRICE] += 1
+                details_by_code[candidate.code] = self._build_trace_item(
+                    candidate,
+                    included=False,
+                    reason=FILTER_REASON_SUSPENDED_OR_INVALID_PRICE,
+                    reason_detail="价格小于等于0，疑似停牌或行情无效",
+                )
                 continue
             market_cap = self._get_market_cap(candidate)
             if market_cap is not None and market_cap < self.min_market_cap:
-                excluded["small_cap"] += 1
+                excluded[FILTER_REASON_SMALL_MARKET_CAP] += 1
+                details_by_code[candidate.code] = self._build_trace_item(
+                    candidate,
+                    included=False,
+                    reason=FILTER_REASON_SMALL_MARKET_CAP,
+                    reason_detail=f"市值低于过滤阈值 {self.min_market_cap:.0f} 亿",
+                )
                 continue
             survivors.append(candidate)
 
@@ -99,12 +157,17 @@ class CandidateFilter:
             logger.info(
                 "候选股过滤完成: 输入=%s, 输出=0, ST剔除=%s, 退市剔除=%s, 停牌剔除=%s, 小市值剔除=%s",
                 len(candidates),
-                excluded["st"],
-                excluded["delisted"],
-                excluded["suspended"],
-                excluded["small_cap"],
+                excluded[FILTER_REASON_ST_OR_SPECIAL_TREATMENT],
+                excluded[FILTER_REASON_DELISTED],
+                excluded[FILTER_REASON_SUSPENDED_OR_INVALID_PRICE],
+                excluded[FILTER_REASON_SMALL_MARKET_CAP],
             )
-            return []
+            return FilterResult(
+                selected=[],
+                details=list(details_by_code.values()),
+                excluded_counts=excluded,
+                score_distribution={},
+            )
 
         match_signals = [self._match_signal(candidate) for candidate in survivors]
         scored_candidates: List[StockCandidate] = []
@@ -117,9 +180,31 @@ class CandidateFilter:
         scored_candidates.sort(key=lambda item: item.match_score, reverse=True)
         output_limit = max(0, min(max_output, self.max_candidates))
         result = scored_candidates[:output_limit]
+        selected_codes = {item.code for item in result}
 
-        self._log_summary(candidates, excluded, survivors, result)
-        return result
+        for candidate in scored_candidates:
+            included = candidate.code in selected_codes
+            reason = FILTER_REASON_NOT_EXCLUDED if included else FILTER_REASON_LOW_RULE_SCORE
+            reason_detail = "进入选股阶段" if included else "规则评分排序未进入本次候选上限"
+            if not included:
+                excluded[FILTER_REASON_LOW_RULE_SCORE] += 1
+            details_by_code[candidate.code] = self._build_trace_item(
+                candidate,
+                included=included,
+                reason=reason,
+                reason_detail=reason_detail,
+                rule_score=candidate.match_score,
+            )
+
+        score_distribution = self._score_distribution(survivors)
+        self._log_summary(candidates, excluded, survivors, result, score_distribution)
+        ordered_details = [details_by_code[item.code] for item in candidates if item.code in details_by_code]
+        return FilterResult(
+            selected=result,
+            details=ordered_details,
+            excluded_counts=excluded,
+            score_distribution=score_distribution,
+        )
 
     def _composite_score(self, candidate: StockCandidate, match_signals: List[float]) -> float:
         scores = {
@@ -240,15 +325,47 @@ class CandidateFilter:
             raise ValueError("CandidateFilter weights must sum to a positive value")
         return {key: max(value, 0.0) / total for key, value in normalized.items()}
 
-    def _log_summary(
+    def _empty_excluded_counts(self) -> Dict[str, int]:
+        return {
+            FILTER_REASON_ST_OR_SPECIAL_TREATMENT: 0,
+            FILTER_REASON_DELISTED: 0,
+            FILTER_REASON_SUSPENDED_OR_INVALID_PRICE: 0,
+            FILTER_REASON_SMALL_MARKET_CAP: 0,
+            FILTER_REASON_LOW_RULE_SCORE: 0,
+            FILTER_REASON_DATA_MISSING: 0,
+            FILTER_REASON_NOT_EXCLUDED: 0,
+        }
+
+    def _build_trace_item(
         self,
-        original_candidates: List[StockCandidate],
-        excluded: Dict[str, int],
-        survivors: List[StockCandidate],
-        result: List[StockCandidate],
-    ) -> None:
-        scores = [candidate.match_score for candidate in survivors]
-        distribution = {
+        candidate: StockCandidate,
+        included: bool,
+        reason: str,
+        reason_detail: str,
+        rule_score: Optional[float] = None,
+    ) -> FilterTraceItem:
+        metric_names = [
+            "pe", "pb", "roe", "total_mv", "circ_mv", "price", "pct_chg",
+            "pct_chg_20d", "turnover_rate", "volume_ratio",
+        ]
+        metrics = candidate.model_dump()
+        return FilterTraceItem(
+            code=candidate.code,
+            name=candidate.name,
+            industry=candidate.industry,
+            included=included,
+            reason=reason,
+            reason_detail=reason_detail,
+            rule_score=round(float(rule_score if rule_score is not None else candidate.match_score or 0.0), 4),
+            source_boards=list(candidate.source_boards or []),
+            key_metrics={key: metrics.get(key) for key in metric_names if metrics.get(key) is not None},
+        )
+
+    def _score_distribution(self, candidates: List[StockCandidate]) -> Dict[str, Any]:
+        if not candidates:
+            return {}
+        scores = [candidate.match_score for candidate in candidates]
+        return {
             "min": min(scores),
             "mean": statistics.mean(scores),
             "median": statistics.median(scores),
@@ -257,15 +374,25 @@ class CandidateFilter:
             "mid": sum(60 <= score < 80 for score in scores),
             "low": sum(score < 60 for score in scores),
         }
+
+    def _log_summary(
+        self,
+        original_candidates: List[StockCandidate],
+        excluded: Dict[str, int],
+        survivors: List[StockCandidate],
+        result: List[StockCandidate],
+        distribution: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        distribution = distribution or self._score_distribution(survivors)
         logger.info(
             "候选股过滤完成: 输入=%s, 保留=%s, 输出=%s, ST剔除=%s, 退市剔除=%s, 停牌剔除=%s, 小市值剔除=%s",
             len(original_candidates),
             len(survivors),
             len(result),
-            excluded["st"],
-            excluded["delisted"],
-            excluded["suspended"],
-            excluded["small_cap"],
+            excluded[FILTER_REASON_ST_OR_SPECIAL_TREATMENT],
+            excluded[FILTER_REASON_DELISTED],
+            excluded[FILTER_REASON_SUSPENDED_OR_INVALID_PRICE],
+            excluded[FILTER_REASON_SMALL_MARKET_CAP],
         )
         logger.info(
             "候选股评分分布: min=%.2f, mean=%.2f, median=%.2f, max=%.2f, >=80=%s, 60-80=%s, <60=%s",

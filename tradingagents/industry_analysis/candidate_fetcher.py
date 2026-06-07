@@ -84,6 +84,8 @@ class CandidateFetcher:
         self.request_delay = max(0.0, min(float(request_delay), 1.0))
         self.financial_enrichment_limit = max(int(financial_enrichment_limit), 0)
         self.data_source_manager = data_source_manager
+        self.last_fetch_trace: list[dict[str, Any]] = []
+        self.last_enrichment_trace: list[dict[str, Any]] = []
 
         if self.data_source_manager is None:
             try:
@@ -96,8 +98,18 @@ class CandidateFetcher:
 
     async def fetch_candidates(self, mapping: ConceptMappingResult) -> list[StockCandidate]:
         """抓取并返回全部候选股，不在此阶段做筛选。"""
+        self.last_fetch_trace = []
+        self.last_enrichment_trace = []
         if self.ak_client is None:
             logger.warning("AKShare 未安装或不可用，将跳过板块成分抓取（后续由LLM推荐候选股）")
+            self.last_fetch_trace.append({
+                "board_name": mapping.user_concept,
+                "board_type": "fallback",
+                "fetched_count": 0,
+                "valid_count": 0,
+                "failed": True,
+                "reason": "AKShare 未安装或不可用",
+            })
             return []
 
         board_pairs = [
@@ -106,6 +118,14 @@ class CandidateFetcher:
         ]
         if not board_pairs:
             logger.info("未提供概念/行业板块，候选股列表为空")
+            self.last_fetch_trace.append({
+                "board_name": mapping.user_concept,
+                "board_type": "fallback",
+                "fetched_count": 0,
+                "valid_count": 0,
+                "failed": True,
+                "reason": "概念映射未返回可抓取板块",
+            })
             return []
 
         logger.info(
@@ -119,6 +139,14 @@ class CandidateFetcher:
         for board_type, board_name in board_pairs:
             board_df = await self._fetch_board_members(board_name=board_name, board_type=board_type)
             if board_df is None or getattr(board_df, "empty", True):
+                self.last_fetch_trace.append({
+                    "board_name": board_name,
+                    "board_type": board_type,
+                    "fetched_count": 0,
+                    "valid_count": 0,
+                    "failed": True,
+                    "reason": "板块成分为空或抓取失败",
+                })
                 continue
 
             parsed_count = 0
@@ -134,6 +162,14 @@ class CandidateFetcher:
                     existing.industry = seed.industry
                 existing.source_boards.add(board_name)
 
+            self.last_fetch_trace.append({
+                "board_name": board_name,
+                "board_type": board_type,
+                "fetched_count": int(len(board_df)),
+                "valid_count": parsed_count,
+                "failed": False,
+                "reason": "",
+            })
             logger.info("板块 %s (%s) 解析完成: %s 只股票", board_name, board_type, parsed_count)
 
         if not seeds:
@@ -211,6 +247,7 @@ class CandidateFetcher:
         spot_lookup = self._build_spot_lookup(spot_df, target_codes)
         if not spot_lookup:
             logger.warning("全市场快照中未匹配到候选股票")
+            self._record_enrichment("akshare_snapshot", len(candidates), 0, [], "全市场快照未匹配到候选股票")
             return False
 
         enriched = 0
@@ -239,6 +276,12 @@ class CandidateFetcher:
                     setattr(candidate, field_name, value)
 
         logger.info("全市场快照补充完成: %s/%s 只候选股命中", enriched, len(candidates))
+        self._record_enrichment(
+            "akshare_snapshot",
+            len(candidates),
+            enriched,
+            ["name", "industry", "pe", "pb", "total_mv", "circ_mv", "price", "pct_chg", "turnover_rate", "volume_ratio"],
+        )
         return enriched > 0
 
     async def _enrich_via_data_source_manager(self, candidates: list[StockCandidate]) -> bool:
@@ -272,6 +315,12 @@ class CandidateFetcher:
 
         if enriched:
             logger.info("DataSourceManager补充完成: %s/%s 只候选股命中", enriched, len(targets))
+        self._record_enrichment(
+            "data_source_manager",
+            len(targets),
+            enriched,
+            ["name", "industry", "price", "pct_chg"],
+        )
         return enriched > 0
 
     async def _enrich_from_mongodb(self, candidates: list[StockCandidate]) -> bool:
@@ -302,6 +351,7 @@ class CandidateFetcher:
 
             if not quotes_lookup and not basics_lookup:
                 logger.info("MongoDB中未找到候选股行情数据，将尝试其他数据源")
+                self._record_enrichment("mongodb", len(candidates), 0, [], "未找到候选股行情或基础信息")
                 return False
 
             enriched = 0
@@ -325,10 +375,17 @@ class CandidateFetcher:
                         candidate.name = str(quote["name"])
 
             logger.info("MongoDB行情补充完成: %s/%s 只候选股命中", enriched, len(candidates))
+            self._record_enrichment(
+                "mongodb",
+                len(candidates),
+                enriched,
+                ["name", "industry", "price", "pct_chg"],
+            )
             return enriched > 0
 
         except Exception as exc:
             logger.warning("从MongoDB补充行情数据失败: %s", exc)
+            self._record_enrichment("mongodb", len(candidates), 0, [], f"MongoDB补充失败: {exc}")
             return False
 
     async def _enrich_with_financial_indicators(self, candidates: list[StockCandidate]) -> None:
@@ -372,6 +429,28 @@ class CandidateFetcher:
 
         if enriched:
             logger.info("财务指标补充完成: %s/%s 只候选股已补充", enriched, len(targets))
+        self._record_enrichment(
+            "financial_indicators",
+            len(targets),
+            enriched,
+            ["roe", "revenue_growth", "net_profit_growth", "debt_ratio"],
+        )
+
+    def _record_enrichment(
+        self,
+        source: str,
+        attempted_count: int,
+        hit_count: int,
+        fields: list[str],
+        note: str = "",
+    ) -> None:
+        self.last_enrichment_trace.append({
+            "source": source,
+            "attempted_count": attempted_count,
+            "hit_count": hit_count,
+            "fields": fields,
+            "note": note,
+        })
 
     async def _enrich_financial_via_dsm(self, candidates: list[StockCandidate]) -> int:
         """通过 DataSourceManager 获取财务数据（BaoStock profit/growth 降级）"""

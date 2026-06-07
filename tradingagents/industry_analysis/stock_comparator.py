@@ -20,9 +20,13 @@ else:
 try:
     from app.models.industry_analysis import (
         DetailLevel,
+        IndustryLogicSections,
         IndustryAnalysisResult,
+        RecommendationGroup,
         StockCandidate,
         StockRecommendation,
+        StockSelectionSections,
+        SupplyChainSegment,
     )
 except Exception:
     industry_analysis_model_path = Path(__file__).resolve().parents[2] / "app" / "models" / "industry_analysis.py"
@@ -32,14 +36,19 @@ except Exception:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     DetailLevel = module.DetailLevel
+    IndustryLogicSections = module.IndustryLogicSections
     IndustryAnalysisResult = module.IndustryAnalysisResult
+    RecommendationGroup = module.RecommendationGroup
     StockCandidate = module.StockCandidate
     StockRecommendation = module.StockRecommendation
+    StockSelectionSections = module.StockSelectionSections
+    SupplyChainSegment = module.SupplyChainSegment
 
 from tradingagents.llm_clients.base_client import normalize_content
 from tradingagents.utils.logging_manager import get_logger
 
 from .prompts import build_due_diligence_prompt, build_stock_selection_prompt
+from tradingagents.utils.structured_output import extract_structured_payload, strip_structured_payload_blocks
 
 logger = get_logger("industry_analysis")
 
@@ -59,6 +68,10 @@ class TwoStageResult:
     portfolio_advice: str = ""
     tracking_indicators: str = ""
     conclusion: str = ""
+    industry_logic_sections: Optional[IndustryLogicSections] = None
+    stock_selection_sections: Optional[StockSelectionSections] = None
+    supply_chain_analysis: List[SupplyChainSegment] = field(default_factory=list)
+    recommendation_groups: List[RecommendationGroup] = field(default_factory=list)
     llm_calls: int = 0
 
 
@@ -101,7 +114,9 @@ class StockComparator:
 
         # Parse structured data from the Markdown response
         result = self._parse_stock_selection(response_text, candidates, top_n)
-        result.stock_selection_report = response_text
+        clean_response_text = strip_structured_payload_blocks(response_text)
+        self._supplement_two_layer_sections(result, due_diligence_report, clean_response_text)
+        result.stock_selection_report = clean_response_text
         result.due_diligence_report = due_diligence_report
         return result
 
@@ -131,6 +146,8 @@ class StockComparator:
                 analysis_time=round(time.perf_counter() - start_time, 4),
                 llm_calls=0,
                 data_date=data_date,
+                industry_logic_sections=self._build_industry_logic_sections(""),
+                stock_selection_sections=self._build_stock_selection_sections(""),
             )
 
         # Two-stage approach
@@ -153,6 +170,10 @@ class StockComparator:
             portfolio_advice=two_stage.portfolio_advice,
             tracking_indicators=two_stage.tracking_indicators,
             conclusion=two_stage.conclusion,
+            industry_logic_sections=two_stage.industry_logic_sections,
+            stock_selection_sections=two_stage.stock_selection_sections,
+            supply_chain_analysis=two_stage.supply_chain_analysis,
+            recommendation_groups=two_stage.recommendation_groups,
             analysis_time=round(time.perf_counter() - start_time, 4),
             llm_calls=2,
             data_date=data_date,
@@ -241,9 +262,11 @@ class StockComparator:
     ) -> TwoStageResult:
         """Extract structured fields from the Stage 2 Markdown response."""
         result = TwoStageResult()
+        structured_payload = extract_structured_payload(response_text)
+        clean_response_text = strip_structured_payload_blocks(response_text)
 
         # Extract section contents from Markdown
-        sections = self._extract_markdown_sections(response_text)
+        sections = self._extract_markdown_sections(clean_response_text)
 
         # Map sections to result fields (fuzzy match section names)
         result.market_overview = self._find_section(sections, ["概念解析", "行业结论", "结论摘要", "Top 5结论摘要"])
@@ -254,6 +277,9 @@ class StockComparator:
         result.conclusion = self._find_section(sections, ["最终结论", "结论"])
         result.risk_warning = _REFERENCE_DISCLAIMER
 
+        if structured_payload:
+            self._apply_structured_payload(result, structured_payload, candidates, top_n)
+
         # Try to extract recommendations from the Top 5 table
         top5_section = self._find_section(sections, [
             "推荐A股Top 5", "推荐A股Top5", "推荐A股 Top 5", "推荐A股 Top5",
@@ -261,11 +287,12 @@ class StockComparator:
         ])
         if not top5_section:
             # Fallback: search entire response for a table with ranking/codes
-            top5_section = response_text
+            top5_section = clean_response_text
 
-        result.recommendations = self._extract_recommendations_from_markdown(
-            top5_section, candidates, top_n
-        )
+        if not result.recommendations:
+            result.recommendations = self._extract_recommendations_from_markdown(
+                top5_section, candidates, top_n
+            )
 
         # If recommendations have missing scores/details, try to supplement from the scoring table (Section 4)
         if result.recommendations:
@@ -274,6 +301,184 @@ class StockComparator:
                 self._supplement_from_scoring_table(result.recommendations, scoring_section)
 
         return result
+
+    def _supplement_two_layer_sections(
+        self,
+        result: TwoStageResult,
+        due_diligence_report: str,
+        stock_selection_report: str,
+    ) -> None:
+        if result.industry_logic_sections is None:
+            result.industry_logic_sections = self._build_industry_logic_sections(due_diligence_report)
+        if result.stock_selection_sections is None:
+            result.stock_selection_sections = self._build_stock_selection_sections(stock_selection_report)
+
+    def _apply_structured_payload(
+        self,
+        result: TwoStageResult,
+        payload: Dict[str, Any],
+        candidates: List[StockCandidate],
+        top_n: int,
+    ) -> None:
+        result.industry_logic_sections = self._parse_industry_logic_sections(
+            payload.get("industry_logic_sections")
+        )
+        result.stock_selection_sections = self._parse_stock_selection_sections(
+            payload.get("stock_selection_sections")
+        )
+        result.supply_chain_analysis = self._parse_supply_chain_analysis(
+            payload.get("supply_chain_analysis"), candidates
+        )
+        result.recommendation_groups = self._parse_recommendation_groups(
+            payload.get("recommendation_groups"), candidates
+        )
+
+        structured_recommendations = self._parse_recommendation_list(
+            payload.get("recommendations"), candidates, top_n
+        )
+        if structured_recommendations:
+            result.recommendations = structured_recommendations
+
+    def _parse_industry_logic_sections(self, value: Any) -> Optional[IndustryLogicSections]:
+        if not isinstance(value, dict):
+            return None
+        return IndustryLogicSections(
+            supply_chain=self._clean_text(value.get("supply_chain")),
+            policy=self._clean_text(value.get("policy")),
+            cycle=self._clean_text(value.get("cycle")),
+            demand=self._clean_text(value.get("demand")),
+            competition=self._clean_text(value.get("competition")),
+            risks=self._clean_text(value.get("risks")),
+        )
+
+    def _parse_stock_selection_sections(self, value: Any) -> Optional[StockSelectionSections]:
+        if not isinstance(value, dict):
+            return None
+        return StockSelectionSections(
+            leaders=self._clean_text(value.get("leaders")),
+            growth_beta=self._clean_text(value.get("growth_beta")),
+            valuation_repair=self._clean_text(value.get("valuation_repair")),
+            high_risk=self._clean_text(value.get("high_risk")),
+            watchlist=self._clean_text(value.get("watchlist")),
+        )
+
+    def _parse_supply_chain_analysis(
+        self,
+        value: Any,
+        candidates: List[StockCandidate],
+    ) -> List[SupplyChainSegment]:
+        if not isinstance(value, list):
+            return []
+
+        segments: List[SupplyChainSegment] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            segments.append(SupplyChainSegment(
+                segment_key=self._clean_text(item.get("segment_key")),
+                segment_name=self._clean_text(item.get("segment_name")),
+                business=self._clean_text(item.get("business")),
+                benefit_logic=self._clean_text(item.get("benefit_logic")),
+                key_indicators=self._clean_text(item.get("key_indicators")),
+                risks=self._clean_text(item.get("risks")),
+                related_stocks=self._parse_recommendation_list(item.get("related_stocks"), candidates, 20),
+            ))
+        return segments
+
+    def _parse_recommendation_groups(
+        self,
+        value: Any,
+        candidates: List[StockCandidate],
+    ) -> List[RecommendationGroup]:
+        if not isinstance(value, list):
+            return []
+
+        groups: List[RecommendationGroup] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            groups.append(RecommendationGroup(
+                group_key=self._clean_text(item.get("group_key")),
+                group_name=self._clean_text(item.get("group_name")),
+                description=self._clean_text(item.get("description")),
+                suitable_style=self._clean_text(item.get("suitable_style")),
+                main_risks=self._clean_text(item.get("main_risks")),
+                stocks=self._parse_recommendation_list(item.get("stocks"), candidates, 20),
+            ))
+        return groups
+
+    def _parse_recommendation_list(
+        self,
+        value: Any,
+        candidates: List[StockCandidate],
+        limit: int,
+    ) -> List[StockRecommendation]:
+        if not isinstance(value, list):
+            return []
+
+        recommendations: List[StockRecommendation] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            code = self._clean_text(item.get("code") or item.get("股票代码"))
+            code_match = re.search(r"(\d{6})", code)
+            if not code_match:
+                continue
+            code = code_match.group(1)
+            candidate = self._find_candidate_by_code(code, candidates)
+            rec = StockRecommendation(
+                rank=int(item.get("rank") or len(recommendations) + 1),
+                code=code,
+                name=self._clean_text(item.get("name")) or (candidate.name if candidate else ""),
+                industry=self._clean_text(item.get("industry")) or (candidate.industry if candidate else ""),
+                summary=self._clean_text(item.get("summary") or item.get("recommendation_logic")),
+                score=self._parse_score(str(item.get("score") or "")),
+                recommendation_logic=self._clean_text(item.get("recommendation_logic")),
+                main_advantages=self._clean_text(item.get("main_advantages")),
+                main_risks=self._clean_text(item.get("main_risks")),
+                suitable_style=self._clean_text(item.get("suitable_style")),
+                supply_chain_position=self._clean_text(item.get("supply_chain_position")),
+                score_breakdown=self._parse_score_breakdown(item.get("score_breakdown")),
+                key_metrics=self._build_key_metrics(candidate),
+            )
+            if isinstance(item.get("key_metrics"), dict):
+                rec.key_metrics.update(item["key_metrics"])
+            recommendations.append(rec)
+            if len(recommendations) >= limit:
+                break
+
+        return recommendations
+
+    def _parse_score_breakdown(self, value: Any) -> Dict[str, float]:
+        if not isinstance(value, dict):
+            return {}
+        parsed: Dict[str, float] = {}
+        for key, raw in value.items():
+            score = self._parse_score(str(raw))
+            if score > 0:
+                parsed[str(key)] = score
+        return parsed
+
+    def _build_industry_logic_sections(self, report: str) -> IndustryLogicSections:
+        sections = self._extract_markdown_sections(report or "")
+        return IndustryLogicSections(
+            supply_chain=self._find_section(sections, ["产业链拆解", "产业链"]),
+            policy=self._find_section(sections, ["政策与周期判断", "政策", "周期判断"]),
+            cycle=self._find_section(sections, ["政策与周期判断", "行业结论"]),
+            demand=self._find_section(sections, ["需求端验证", "需求"]),
+            competition=self._find_section(sections, ["竞争格局"]),
+            risks=self._find_section(sections, ["风险矩阵", "风险"]),
+        )
+
+    def _build_stock_selection_sections(self, report: str) -> StockSelectionSections:
+        sections = self._extract_markdown_sections(report or "")
+        return StockSelectionSections(
+            leaders=self._find_section(sections, ["推荐A股 Top 5", "推荐A股Top 5", "Top 5结论摘要"]),
+            growth_beta=self._find_section(sections, ["组合建议"]),
+            valuation_repair=self._find_section(sections, ["股票多维评分", "估值合理性"]),
+            high_risk=self._find_section(sections, ["未入选/剔除原因", "风险"]),
+            watchlist=self._find_section(sections, ["最终结论", "跟踪指标"]),
+        )
 
     def _extract_markdown_sections(self, text: str) -> Dict[str, str]:
         """Split Markdown text into sections by headers."""

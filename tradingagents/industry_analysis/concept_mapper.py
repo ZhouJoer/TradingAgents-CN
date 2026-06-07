@@ -10,6 +10,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Sequence
 
+from tradingagents.utils.structured_output import extract_json_text
+
 try:
     from tradingagents.utils.logging_manager import get_logger
 except Exception:
@@ -110,16 +112,7 @@ def _extract_keywords(user_concept: str) -> list[str]:
 
 
 def _extract_json_text(text: str) -> str:
-    cleaned = text.strip()
-    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", cleaned, re.DOTALL)
-    if fenced:
-        return fenced.group(1)
-
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        return cleaned[start : end + 1]
-    return cleaned
+    return extract_json_text(text)
 
 
 def _parse_llm_json(text: str) -> dict[str, Any]:

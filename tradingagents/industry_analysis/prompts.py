@@ -19,6 +19,7 @@ DUE_DILIGENCE_PROMPT_TEMPLATE = dedent(
     5. 对不确定、存疑或缺少证据的内容，必须明确标注“待验证/信息不足/需进一步核实”。
     6. 所有判断尽量给出判断依据、验证线索和后续跟踪指标。
     7. 结尾必须保留风险提示：{risk_disclaimer}
+    8. 必须先判断主题类型：产业链型、政策主题型、风格因子型、周期型或其他；如果是“高股息”等非标准产业链主题，可用“资产类型/行业来源/现金流来源/风险来源”替代上中下游。
 
     请严格按照以下结构输出，且不要遗漏任何部分：
 
@@ -101,6 +102,7 @@ STOCK_SELECTION_PROMPT_TEMPLATE = dedent(
     5. 若候选数据不足或为空，可以自行构建A股候选池，但必须明确说明数据限制，且不能编造不存在的财务或交易数据。
     6. 仅讨论A股，不要输出港股、美股、ETF、基金或其他非A股标的。
     7. 结尾必须保留风险提示：{risk_disclaimer}
+    8. 正文结束后，必须额外输出一个 fenced JSON 代码块。JSON 只能使用真实候选数据或明确标注数据缺口，不得编造财务或行情数据。
 
     请严格按照以下结构输出：
 
@@ -150,6 +152,59 @@ STOCK_SELECTION_PROMPT_TEMPLATE = dedent(
     - 请输出表格：排名｜股票代码｜股票名称｜一句话核心逻辑｜最大风险｜跟踪指标
 
     最后单独输出一行风险提示：{risk_disclaimer}
+
+    正文之后请输出如下结构化 JSON，字段名必须保持英文，缺失内容用空字符串或空数组：
+    ```json
+    {{
+      "industry_logic_sections": {{
+        "supply_chain": "产业链、资产类型或价值来源总结",
+        "policy": "政策与监管逻辑",
+        "cycle": "景气度和周期判断",
+        "demand": "需求驱动",
+        "competition": "竞争格局",
+        "risks": "核心风险"
+      }},
+      "stock_selection_sections": {{
+        "leaders": "龙头逻辑",
+        "growth_beta": "成长弹性逻辑",
+        "valuation_repair": "低估修复逻辑",
+        "high_risk": "高风险高波动逻辑",
+        "watchlist": "观察名单逻辑"
+      }},
+      "supply_chain_analysis": [
+        {{
+          "segment_key": "upstream | midstream | downstream | applications | infrastructure_or_services",
+          "segment_name": "环节名称",
+          "business": "主要业务",
+          "benefit_logic": "受益逻辑",
+          "key_indicators": "关键跟踪指标",
+          "risks": "主要风险",
+          "related_stocks": [
+            {{"code": "000000", "name": "股票名称", "summary": "相关原因", "supply_chain_position": "环节名称"}}
+          ]
+        }}
+      ],
+      "recommendation_groups": [
+        {{
+          "group_key": "stable_leaders",
+          "group_name": "稳健龙头",
+          "description": "分组说明",
+          "suitable_style": "适合投资风格",
+          "main_risks": "主要风险",
+          "stocks": [
+            {{"code": "000000", "name": "股票名称", "score": 0, "recommendation_logic": "推荐逻辑", "main_advantages": "主要优势", "main_risks": "主要风险", "suitable_style": "适合风格", "supply_chain_position": "产业链位置"}}
+          ]
+        }},
+        {{"group_key": "growth_beta", "group_name": "成长弹性", "description": "", "suitable_style": "", "main_risks": "", "stocks": []}},
+        {{"group_key": "valuation_repair", "group_name": "低估修复", "description": "", "suitable_style": "", "main_risks": "", "stocks": []}},
+        {{"group_key": "high_risk_high_volatility", "group_name": "高风险高波动", "description": "", "suitable_style": "", "main_risks": "", "stocks": []}},
+        {{"group_key": "watchlist", "group_name": "观察名单", "description": "", "suitable_style": "", "main_risks": "", "stocks": []}}
+      ],
+      "recommendations": [
+        {{"rank": 1, "code": "000000", "name": "股票名称", "industry": "行业", "score": 0, "summary": "摘要", "recommendation_logic": "推荐逻辑", "main_advantages": "主要优势", "main_risks": "主要风险", "suitable_style": "适合风格", "supply_chain_position": "产业链位置", "score_breakdown": {{}}}}
+      ]
+    }}
+    ```
     """
 ).strip()
 

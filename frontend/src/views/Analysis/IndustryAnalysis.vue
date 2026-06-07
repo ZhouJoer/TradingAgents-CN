@@ -169,10 +169,9 @@
           </div>
 
           <el-progress
+            class="industry-main-progress"
             :percentage="normalizeProgress(activeTask.progress)"
             :stroke-width="14"
-            striped
-            striped-flow
           />
         </div>
       </el-card>
@@ -266,27 +265,151 @@
 
       <el-card class="panel-card tabs-card" shadow="hover">
         <el-tabs v-model="activeTab" class="result-tabs">
-          <el-tab-pane label="行业尽调报告" name="due-diligence">
+          <el-tab-pane label="分析过程" name="trace">
             <div class="tab-pane">
-              <div class="markdown-content" v-html="renderMarkdown(activeResult.due_diligence_report || emptyMarkdown)"></div>
+              <template v-if="candidateTrace">
+                <div class="trace-summary-grid">
+                  <div class="meta-card">
+                    <span class="meta-label">初始候选</span>
+                    <strong>{{ candidateTrace.original_count }}</strong>
+                  </div>
+                  <div class="meta-card">
+                    <span class="meta-label">进入选股</span>
+                    <strong>{{ candidateTrace.filtered_count }}</strong>
+                  </div>
+                  <div class="meta-card">
+                    <span class="meta-label">剔除数量</span>
+                    <strong>{{ candidateTrace.excluded_count }}</strong>
+                  </div>
+                </div>
 
-              <el-card v-if="activeResult.market_overview" class="inner-card" shadow="never">
-                <template #header>
-                  <span>市场概览</span>
-                </template>
-                <div class="markdown-content" v-html="renderMarkdown(activeResult.market_overview)"></div>
-              </el-card>
+                <el-card class="inner-card" shadow="never">
+                  <template #header>
+                    <span>概念映射</span>
+                  </template>
+                  <div class="trace-tags">
+                    <el-tag v-for="board in candidateTrace.mapping.board_concepts" :key="`concept-${board}`" type="success" effect="plain">
+                      概念：{{ board }}
+                    </el-tag>
+                    <el-tag v-for="board in candidateTrace.mapping.board_industries" :key="`industry-${board}`" type="warning" effect="plain">
+                      行业：{{ board }}
+                    </el-tag>
+                    <el-tag v-for="keyword in candidateTrace.mapping.keywords" :key="`keyword-${keyword}`" effect="plain">
+                      {{ keyword }}
+                    </el-tag>
+                  </div>
+                  <div v-if="candidateTrace.mapping.reasoning" class="markdown-content" v-html="renderMarkdown(candidateTrace.mapping.reasoning)"></div>
+                </el-card>
+
+                <el-card class="inner-card" shadow="never">
+                  <template #header>
+                    <span>候选抓取</span>
+                  </template>
+                  <el-table :data="candidateTrace.board_fetches" row-key="board_name">
+                    <el-table-column prop="board_name" label="板块" min-width="140" show-overflow-tooltip />
+                    <el-table-column prop="board_type" label="类型" width="110" />
+                    <el-table-column prop="fetched_count" label="抓取数" width="100" align="right" />
+                    <el-table-column prop="valid_count" label="有效数" width="100" align="right" />
+                    <el-table-column label="状态" width="90">
+                      <template #default="{ row }">
+                        <el-tag :type="row.failed ? 'danger' : 'success'" size="small">{{ row.failed ? '失败' : '成功' }}</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="reason" label="说明" min-width="180" show-overflow-tooltip />
+                  </el-table>
+                </el-card>
+
+                <el-card class="inner-card" shadow="never">
+                  <template #header>
+                    <span>数据补全</span>
+                  </template>
+                  <el-table :data="candidateTrace.enrichment" row-key="source">
+                    <el-table-column prop="source" label="数据源" min-width="160" />
+                    <el-table-column prop="attempted_count" label="尝试数" width="100" align="right" />
+                    <el-table-column prop="hit_count" label="命中数" width="100" align="right" />
+                    <el-table-column label="字段" min-width="180">
+                      <template #default="{ row }">{{ (row.fields || []).join('、') || '--' }}</template>
+                    </el-table-column>
+                    <el-table-column prop="note" label="说明" min-width="200" show-overflow-tooltip />
+                  </el-table>
+                </el-card>
+
+                <el-card class="inner-card" shadow="never">
+                  <template #header>
+                    <span>过滤明细</span>
+                  </template>
+                  <el-table :data="filterDetails" row-key="code" max-height="520">
+                    <el-table-column prop="code" label="代码" width="100" />
+                    <el-table-column prop="name" label="名称" width="120" />
+                    <el-table-column prop="industry" label="行业" min-width="120" show-overflow-tooltip />
+                    <el-table-column label="入围" width="90">
+                      <template #default="{ row }">
+                        <el-tag :type="row.included ? 'success' : 'info'" size="small">{{ row.included ? '是' : '否' }}</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="reason_detail" label="原因" min-width="220" show-overflow-tooltip />
+                    <el-table-column label="规则评分" width="120">
+                      <template #default="{ row }">{{ formatScoreValue(row.rule_score || 0) }}</template>
+                    </el-table-column>
+                    <el-table-column label="来源板块" min-width="180" show-overflow-tooltip>
+                      <template #default="{ row }">{{ (row.source_boards || []).join('、') || '--' }}</template>
+                    </el-table-column>
+                  </el-table>
+                </el-card>
+              </template>
+
+              <el-empty v-else description="该历史报告未记录过程明细" :image-size="100" />
             </div>
           </el-tab-pane>
 
-          <el-tab-pane label="选股推荐" name="stock-selection">
+          <el-tab-pane label="行业逻辑" name="industry-logic">
             <div class="tab-pane">
-              <div class="markdown-content" v-html="renderMarkdown(activeResult.stock_selection_report || emptyMarkdown)"></div>
+              <div class="structured-grid">
+                <el-card
+                  v-for="section in industryLogicDisplaySections"
+                  :key="section.key"
+                  class="inner-card structured-card"
+                  shadow="never"
+                >
+                  <template #header>
+                    <span>{{ section.title }}</span>
+                  </template>
+                  <div class="markdown-content" v-html="renderMarkdown(section.content)"></div>
+                </el-card>
+              </div>
 
+              <el-card v-if="supplyChainSegments.length" class="inner-card" shadow="never">
+                <template #header>
+                  <span>产业链视角</span>
+                </template>
+                <el-table :data="supplyChainSegments" row-key="segment_key">
+                  <el-table-column prop="segment_name" label="环节" width="140" />
+                  <el-table-column prop="business" label="主要业务" min-width="180" show-overflow-tooltip />
+                  <el-table-column prop="benefit_logic" label="受益逻辑" min-width="200" show-overflow-tooltip />
+                  <el-table-column prop="key_indicators" label="关键指标" min-width="180" show-overflow-tooltip />
+                  <el-table-column prop="risks" label="风险" min-width="180" show-overflow-tooltip />
+                  <el-table-column label="相关股票" min-width="180">
+                    <template #default="{ row }">
+                      <div class="trace-tags">
+                        <el-tag v-for="stock in row.related_stocks" :key="`${row.segment_key}-${stock.code}`" effect="plain" size="small">
+                          {{ stock.name || stock.code }}
+                        </el-tag>
+                      </div>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </el-card>
+
+              <div class="markdown-content" v-html="renderMarkdown(cleanDueDiligenceReport || emptyMarkdown)"></div>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="选股逻辑" name="stock-selection">
+            <div class="tab-pane">
               <el-card class="inner-card" shadow="never">
                 <template #header>
                   <div class="inner-card-header">
-                    <span>Top 5 结构化总览</span>
+                    <span>综合 Top 结果</span>
                     <el-tag type="primary" effect="plain">{{ topRecommendations.length }} 只</el-tag>
                   </div>
                 </template>
@@ -307,7 +430,7 @@
 
               <div class="structured-grid">
                 <el-card
-                  v-for="section in structuredSections"
+                  v-for="section in stockSelectionDisplaySections"
                   :key="section.key"
                   class="inner-card structured-card"
                   shadow="never"
@@ -318,10 +441,46 @@
                   <div class="markdown-content" v-html="renderMarkdown(section.content)"></div>
                 </el-card>
               </div>
+
+              <div class="markdown-content" v-html="renderMarkdown(cleanStockSelectionReport || emptyMarkdown)"></div>
             </div>
           </el-tab-pane>
 
-          <el-tab-pane label="Top 5 详情" name="top-detail">
+          <el-tab-pane label="分组推荐" name="recommendation-groups">
+            <div class="tab-pane">
+              <div v-if="recommendationGroups.length" class="group-grid">
+                <el-card
+                  v-for="group in recommendationGroups"
+                  :key="group.group_key"
+                  class="detail-card"
+                  shadow="hover"
+                >
+                  <template #header>
+                    <div>
+                      <div class="stock-title">{{ group.group_name || group.group_key }}</div>
+                      <div class="stock-subtitle">{{ group.suitable_style || '风格待补充' }}</div>
+                    </div>
+                  </template>
+                  <div class="markdown-content" v-html="renderMarkdown(group.description || emptyMarkdown)"></div>
+                  <el-alert v-if="group.main_risks" class="group-risk" type="warning" :closable="false" :title="group.main_risks" />
+                  <el-table :data="group.stocks" row-key="code" class="top-table">
+                    <el-table-column prop="code" label="代码" width="100" />
+                    <el-table-column prop="name" label="名称" width="120" />
+                    <el-table-column label="评分" width="130">
+                      <template #default="{ row }">
+                        <el-progress :percentage="normalizeScore(row.score)" :stroke-width="8" />
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="recommendation_logic" label="推荐逻辑" min-width="220" show-overflow-tooltip />
+                    <el-table-column prop="main_risks" label="主要风险" min-width="180" show-overflow-tooltip />
+                  </el-table>
+                </el-card>
+              </div>
+              <el-empty v-else description="本次结果未生成分组推荐" :image-size="100" />
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="个股详情" name="top-detail">
             <div class="detail-grid">
               <el-card
                 v-for="item in topRecommendations"
@@ -404,6 +563,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Delete, Download, Promotion, Search, TrendCharts } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
@@ -423,6 +583,7 @@ marked.setOptions({ breaks: true, gfm: true })
 
 const quickConcepts = ['AI相关', '高股息', '新能源', '半导体', '机器人', '低空经济', '出海链', '中特估']
 const emptyMarkdown = '暂无内容'
+const route = useRoute()
 
 type DownloadFormat = 'markdown' | 'json' | 'pdf'
 
@@ -453,7 +614,7 @@ const {
   getModelParameters
 } = useAnalysisModelSettings()
 
-const activeTab = ref('due-diligence')
+const activeTab = ref('trace')
 const submitting = ref(false)
 const historyLoading = ref(false)
 const taskLoading = ref(false)
@@ -474,16 +635,42 @@ const isRunning = computed(() => {
 
 const activeResult = computed<IndustryAnalysisResult | null>(() => activeTask.value?.result ?? null)
 const topRecommendations = computed(() => activeResult.value?.recommendations.slice(0, 5) ?? [])
+const candidateTrace = computed(() => activeResult.value?.candidate_trace ?? null)
+const filterDetails = computed(() => candidateTrace.value?.filter_details ?? [])
+const supplyChainSegments = computed(() => activeResult.value?.supply_chain_analysis ?? [])
+const recommendationGroups = computed(() => activeResult.value?.recommendation_groups ?? [])
+const cleanDueDiligenceReport = computed(() => stripStructuredPayloadBlocks(activeResult.value?.due_diligence_report || ''))
+const cleanStockSelectionReport = computed(() => stripStructuredPayloadBlocks(activeResult.value?.stock_selection_report || ''))
 const progressStageMessage = computed(() => {
   if (!activeTask.value) return ''
   return activeTask.value.progress_message || (activeTask.value.status === 'pending' ? '任务排队中...' : 'AI 正在分析中...')
 })
-const structuredSections = computed<StructuredSection[]>(() => {
+const industryLogicDisplaySections = computed<StructuredSection[]>(() => {
   const result = activeResult.value
   if (!result) return []
+  const sections = result.industry_logic_sections
 
   return [
-    { key: 'selection_reasoning', title: '选股逻辑', content: result.selection_reasoning },
+    { key: 'supply_chain', title: '产业链', content: sections?.supply_chain || '' },
+    { key: 'policy', title: '政策', content: sections?.policy || '' },
+    { key: 'cycle', title: '景气度', content: sections?.cycle || '' },
+    { key: 'demand', title: '需求驱动', content: sections?.demand || '' },
+    { key: 'competition', title: '竞争格局', content: sections?.competition || '' },
+    { key: 'risks', title: '风险', content: sections?.risks || '' }
+  ].filter(section => section.content && section.content.trim())
+})
+
+const stockSelectionDisplaySections = computed<StructuredSection[]>(() => {
+  const result = activeResult.value
+  if (!result) return []
+  const sections = result.stock_selection_sections
+
+  return [
+    { key: 'leaders', title: '龙头', content: sections?.leaders || result.selection_reasoning },
+    { key: 'growth_beta', title: '成长弹性', content: sections?.growth_beta || '' },
+    { key: 'valuation_repair', title: '低估修复', content: sections?.valuation_repair || '' },
+    { key: 'high_risk', title: '高风险高波动', content: sections?.high_risk || '' },
+    { key: 'watchlist', title: '观察名单', content: sections?.watchlist || '' },
     { key: 'risk_warning', title: '风险提示', content: result.risk_warning },
     { key: 'exclusion_reasons', title: '剔除原因', content: result.exclusion_reasons },
     { key: 'portfolio_advice', title: '组合建议', content: result.portfolio_advice },
@@ -513,6 +700,27 @@ const getErrorMessage = async (error: unknown, fallback: string) => {
   }
 
   return fallback
+}
+
+const stripStructuredPayloadBlocks = (content: string) => {
+  if (!content) return ''
+  const hasStructuredKeys = (text: string) => (
+    text.includes('industry_logic_sections') ||
+    text.includes('stock_selection_sections') ||
+    text.includes('supply_chain_analysis') ||
+    text.includes('recommendation_groups')
+  )
+
+  let cleaned = content.replace(/```(?:json)?\s*([\s\S]*?)\s*```/gi, (block, body) => {
+    return hasStructuredKeys(String(body || '')) ? '' : block
+  })
+
+  const markerMatch = cleaned.match(/\s*STRUCTURED_JSON\s*:\s*(\{[\s\S]*\})\s*$/i)
+  if (markerMatch && hasStructuredKeys(markerMatch[1] || '')) {
+    cleaned = cleaned.slice(0, markerMatch.index)
+  }
+
+  return cleaned.replace(/\n{3,}/g, '\n\n').trim()
 }
 
 const renderMarkdown = (content: string) => {
@@ -609,7 +817,7 @@ const startPolling = (taskId: string) => {
   stopPolling()
   pollTimer.value = window.setInterval(() => {
     void loadTaskDetail(taskId, { silent: true })
-  }, 3000)
+  }, 5000)
 }
 
 const loadHistory = async () => {
@@ -705,7 +913,7 @@ const submitAnalysis = async () => {
       completed_at: null
     }
 
-    activeTab.value = 'due-diligence'
+    activeTab.value = 'trace'
     ElMessage.success(response.message || '分析任务已提交')
     await loadHistory()
     await loadTaskDetail(submittedTask.task_id, { silent: true })
@@ -717,7 +925,7 @@ const submitAnalysis = async () => {
 }
 
 const selectHistoryTask = async (taskId: string) => {
-  activeTab.value = 'due-diligence'
+  activeTab.value = 'trace'
   errorMessage.value = ''
   await loadTaskDetail(taskId)
 }
@@ -850,7 +1058,14 @@ const deleteHistoryTask = async (taskId: string) => {
 
 onMounted(() => {
   void initializeModelSettings()
-  void loadHistory()
+  const taskId = typeof route.query.task_id === 'string' ? route.query.task_id : ''
+  if (taskId) {
+    void loadTaskDetail(taskId, { silent: true }).finally(() => {
+      void loadHistory()
+    })
+  } else {
+    void loadHistory()
+  }
 })
 
 onBeforeUnmount(() => {
@@ -963,6 +1178,12 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
+.trace-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .quick-tag {
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1026,6 +1247,19 @@ onBeforeUnmount(() => {
   margin-top: 12px;
   font-size: 13px;
   color: var(--el-text-color-secondary);
+}
+
+.industry-main-progress {
+  width: 100%;
+}
+
+.industry-main-progress :deep(.el-progress-bar__outer) {
+  height: 14px !important;
+  background-color: color-mix(in srgb, var(--el-color-primary) 10%, var(--el-fill-color-light));
+}
+
+.industry-main-progress :deep(.el-progress-bar__inner) {
+  transition: width 0.6s ease;
 }
 
 .history-list {
@@ -1118,7 +1352,8 @@ onBeforeUnmount(() => {
 }
 
 .structured-grid,
-.detail-grid {
+.detail-grid,
+.group-grid {
   display: grid;
   gap: 20px;
 }
@@ -1127,8 +1362,19 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.detail-grid {
+.detail-grid,
+.group-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.trace-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.group-risk {
+  margin: 12px 0;
 }
 
 .detail-card {
@@ -1256,7 +1502,8 @@ onBeforeUnmount(() => {
   }
 
   .structured-grid,
-  .detail-grid {
+  .detail-grid,
+  .group-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -1276,6 +1523,10 @@ onBeforeUnmount(() => {
 
   .meta-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trace-summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .card-header,
