@@ -157,6 +157,13 @@
                   :closable="false"
                   style="margin-top: 12px"
                 />
+                <el-alert
+                  v-if="analysisForm.selectedAnalysts.includes('复盘分析员')"
+                  title="复盘分析员会按分析深度自动引用历史报告：快速/基础使用最近1份，标准/深度使用最近2份，全面使用最近3份并补充最近复盘结论。"
+                  type="success"
+                  :closable="false"
+                  style="margin-top: 12px"
+                />
               </div>
 
 
@@ -954,6 +961,8 @@ const submitAnalysis = async () => {
       symbol: analysisForm.symbol,
       stock_code: analysisForm.symbol,  // 兼容字段
       parameters: {
+        include_history_context: analysisForm.selectedAnalysts.includes('复盘分析员'),
+        review_depth: 'auto',
         market_type: analysisForm.market,
         analysis_date: analysisDate.toISOString().split('T')[0],
         research_depth: getDepthDescription(analysisForm.researchDepth),
@@ -1298,6 +1307,7 @@ const getAnalysisReports = (data: any) => {
 
     // 最终决策 (1个)
     { key: 'final_trade_decision', title: '🎯 最终交易决策', category: '最终决策' },
+    { key: 'review_context_report', title: '🔁 历史报告复盘', category: '最终决策' },
 
     // 兼容旧格式
     { key: 'investment_plan', title: '📋 投资建议', category: '其他' },

@@ -17,6 +17,7 @@ def create_trader(llm, memory, config=None):
         sentiment_report = state["sentiment_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
+        history_review_report = state.get("history_review_report", "")
 
         # 使用统一的股票类型检测
         from tradingagents.utils.stock_utils import StockUtils
@@ -59,7 +60,7 @@ def create_trader(llm, memory, config=None):
 
         context = {
             "role": "user",
-            "content": f"Based on a comprehensive analysis by a team of analysts, here is an investment plan tailored for {company_name}. This plan incorporates insights from current technical market trends, macroeconomic indicators, and social media sentiment. Use this plan as a foundation for evaluating your next trading decision.\n\nProposed Investment Plan: {investment_plan}\n\nLeverage these insights to make an informed and strategic decision.",
+            "content": f"Based on a comprehensive analysis by a team of analysts, here is an investment plan tailored for {company_name}. This plan incorporates insights from current technical market trends, macroeconomic indicators, and social media sentiment. Use this plan as a foundation for evaluating your next trading decision.\n\nProposed Investment Plan: {investment_plan}\n\nHistorical report review: {history_review_report if history_review_report else 'Not provided.'}\n\nLeverage these insights to make an informed and strategic decision.",
         }
 
         messages = [
@@ -92,6 +93,7 @@ def create_trader(llm, memory, config=None):
 - 必须逐项说明新闻面、基本面、同行业对比如何影响最终买入/持有/卖出建议。
 - 同行业对比属于基本面估值的重要依据，若基本面报告提供了同业均值/中位数、可比公司或历史分位，必须纳入目标价和仓位判断。
 - 如果新闻面、基本面、同业对比之间存在冲突，请说明你如何取舍，不能忽略任何已提供的报告。
+- 如果提供了历史报告复盘，必须在交易计划中单列“历史报告复盘”小节，说明历史判断哪些被当前信息支持、削弱或推翻，以及这些变化如何影响动作、仓位、目标价或止损。
 
 🎯 目标价位计算指导：
 - 基于基本面分析中的估值数据（P/E、P/B、DCF等）

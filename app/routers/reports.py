@@ -9,10 +9,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .auth_db import get_current_user
 from ..core.database import get_mongo_db
+from ..core.response import ok
+from ..services.report_review_service import ReportReviewService
 from ..utils.timezone import to_config_tz
 import logging
 
@@ -115,6 +117,48 @@ class ReportListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class ReportCompareRequest(BaseModel):
+    base_report_id: str
+    current_report_id: str
+
+
+class CreateReviewTaskRequest(BaseModel):
+    review_window_days: int = Field(default=30, ge=1, le=365)
+    review_mode: str = "hybrid"
+
+
+@router.get("/stock/{stock_symbol}/timeline", response_model=Dict[str, Any])
+async def get_report_timeline(
+    stock_symbol: str,
+    limit: int = Query(10, ge=1, le=50),
+    user: dict = Depends(get_current_user)
+):
+    service = ReportReviewService()
+    data = await service.get_stock_timeline(stock_symbol, user, limit)
+    return ok(data=data, message="报告观点时间线获取成功")
+
+
+@router.get("/stock/{stock_symbol}/latest-comparison", response_model=Dict[str, Any])
+async def get_latest_report_comparison(
+    stock_symbol: str,
+    user: dict = Depends(get_current_user)
+):
+    service = ReportReviewService()
+    data = await service.latest_comparison(stock_symbol, user)
+    return ok(data=data, message="最近报告对比获取成功")
+
+
+@router.post("/compare", response_model=Dict[str, Any])
+async def compare_reports(
+    request: ReportCompareRequest,
+    user: dict = Depends(get_current_user)
+):
+    service = ReportReviewService()
+    data = await service.compare_reports(request.base_report_id, request.current_report_id, user)
+    return ok(data=data, message="报告对比生成成功")
+
 
 @router.get("/list", response_model=Dict[str, Any])
 async def get_reports_list(
@@ -234,6 +278,44 @@ async def get_reports_list(
     except Exception as e:
         logger.error(f"❌ 获取报告列表失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{report_id}/snapshot", response_model=Dict[str, Any])
+async def get_report_snapshot(
+    report_id: str,
+    regenerate: bool = Query(False, description="是否重新生成快照"),
+    user: dict = Depends(get_current_user)
+):
+    service = ReportReviewService()
+    data = await service.get_or_create_snapshot(report_id, user, regenerate=regenerate)
+    return ok(data=data, message="报告快照获取成功")
+
+
+@router.post("/{report_id}/snapshot/regenerate", response_model=Dict[str, Any])
+async def regenerate_report_snapshot(
+    report_id: str,
+    user: dict = Depends(get_current_user)
+):
+    service = ReportReviewService()
+    data = await service.get_or_create_snapshot(report_id, user, regenerate=True)
+    return ok(data=data, message="报告快照已重新生成")
+
+
+@router.post("/{report_id}/review-task", response_model=Dict[str, Any])
+async def create_report_review_task(
+    report_id: str,
+    request: CreateReviewTaskRequest,
+    user: dict = Depends(get_current_user)
+):
+    service = ReportReviewService()
+    data = await service.create_review_task(
+        report_id=report_id,
+        user=user,
+        review_window_days=request.review_window_days,
+        review_mode=request.review_mode,
+    )
+    return ok(data=data, message="复盘任务创建成功")
+
 
 @router.get("/{report_id}/detail")
 async def get_report_detail(

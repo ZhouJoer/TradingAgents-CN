@@ -16,6 +16,7 @@ def create_research_manager(llm, memory, config=None):
         sentiment_report = state["sentiment_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
+        history_review_report = state.get("history_review_report", "")
 
         investment_debate_state = state["investment_debate_state"]
 
@@ -63,6 +64,7 @@ def create_research_manager(llm, memory, config=None):
 - 必须分别说明新闻面、基本面、同行业对比对建议的影响；如果某项报告为空或未被选择，请明确说明“本次未纳入”，不能假装已经分析。
 - 基本面报告中的同业均值/中位数、可比公司、历史分位等同业对比信息必须进入估值和目标价判断，不能只依赖技术面或情绪面。
 - 如果新闻面与基本面结论冲突，需要说明最终更采信哪一方以及原因。
+- 如果提供了历史报告复盘，必须单列“历史报告复盘”小节，判断历史报告中的技术面、基本面、新闻面分析哪些被当前信息支持、削弱或推翻，并说明它如何改变本次投资计划。
 
 考虑您在类似情况下的过去错误。利用这些见解来完善您的决策制定，确保您在学习和改进。以对话方式呈现您的分析，就像自然说话一样，不使用特殊格式。
 
@@ -80,6 +82,8 @@ def create_research_manager(llm, memory, config=None):
 新闻分析：{news_report}
 
 基本面分析：{fundamentals_report}
+
+历史报告复盘：{history_review_report if history_review_report else "本次未启用历史报告复盘。"}
 
 以下是辩论：
 辩论历史：

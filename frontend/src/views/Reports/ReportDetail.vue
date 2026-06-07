@@ -203,16 +203,10 @@
         </div>
       </el-card>
 
-      <!-- 报告摘要 -->
-      <el-card v-if="report.summary" class="summary-card" shadow="never">
-        <template #header>
-          <div class="card-header">
-            <el-icon><InfoFilled /></el-icon>
-            <span>执行摘要</span>
-          </div>
-        </template>
-        <div class="summary-content markdown-content" v-html="renderMarkdown(report.summary)"></div>
-      </el-card>
+      <HistoryReviewPanel
+        :report-id="report.id"
+        :stock-symbol="report.stock_symbol"
+      />
 
       <!-- 报告模块 -->
       <el-card class="modules-card" shadow="never">
@@ -265,13 +259,13 @@ import { ElMessage, ElMessageBox, ElInputNumber } from 'element-plus'
 import { paperApi } from '@/api/paper'
 import { stocksApi } from '@/api/stocks'
 import { configApi, type LLMConfig } from '@/api/config'
+import HistoryReviewPanel from '@/components/reports/HistoryReviewPanel.vue'
 import {
   Document,
   Calendar,
   User,
   Download,
   Back,
-  InfoFilled,
   TrendCharts,
   Files,
   ShoppingCart,
@@ -853,6 +847,7 @@ const getModuleDisplayName = (moduleName: string) => {
 
     // 最终决策 (1个)
     final_trade_decision: '🎯 最终交易决策',
+    review_context_report: '🔁 历史报告复盘',
 
     // 兼容旧字段
     investment_plan: '📋 投资建议',
@@ -1049,7 +1044,6 @@ watch(
       }
     }
 
-    .summary-card,
     .metrics-card,
     .modules-card {
       margin-bottom: 24px;

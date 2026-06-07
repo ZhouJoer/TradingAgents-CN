@@ -1,12 +1,8 @@
 # TradingAgents/graph/propagation.py
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
-# 导入统一日志系统
-from tradingagents.utils.logging_init import get_logger
-logger = get_logger("default")
 from tradingagents.agents.utils.agent_states import (
-    AgentState,
     InvestDebateState,
     RiskDebateState,
 )
@@ -20,14 +16,19 @@ class Propagator:
         self.max_recur_limit = max_recur_limit
 
     def create_initial_state(
-        self, company_name: str, trade_date: str
+        self, company_name: str, trade_date: str, review_context: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create the initial state for the agent graph."""
         from langchain_core.messages import HumanMessage
 
-        # 🔥 修复：创建明确的分析请求消息，而不是只传递股票代码
-        # 这样可以确保所有LLM（包括DeepSeek）都能理解任务
         analysis_request = f"请对股票 {company_name} 进行全面分析，交易日期为 {trade_date}。"
+        if review_context:
+            analysis_request += (
+                "\n\n本次启用了历史报告复盘。请在关键决策节点结合 "
+                "state.history_review_report，识别观点变化、已验证假设和仍需验证的问题；"
+                "不要把历史结论直接当作本次投资建议。请在交易计划和最终决策中单列"
+                "“历史报告复盘”小节，说明历史判断哪些被当前信息支持、削弱或推翻。"
+            )
 
         return {
             "messages": [HumanMessage(content=analysis_request)],
@@ -51,6 +52,7 @@ class Propagator:
             "fundamentals_report": "",
             "sentiment_report": "",
             "news_report": "",
+            "history_review_report": review_context or "",
         }
 
     def get_graph_args(self, use_progress_callback: bool = False) -> Dict[str, Any]:
@@ -60,8 +62,6 @@ class Propagator:
             use_progress_callback: If True, use 'updates' mode for node-level progress tracking.
                                   If False, use 'values' mode for complete state updates.
         """
-        # 使用 'updates' 模式可以获取节点级别的更新，用于进度跟踪
-        # 使用 'values' 模式可以获取完整的状态更新
         stream_mode = "updates" if use_progress_callback else "values"
 
         return {

@@ -362,6 +362,34 @@ async def create_database_indexes(db):
         await market_quotes.create_index([("amount", -1)])
         await market_quotes.create_index([("updated_at", -1)])
 
+        # analysis review loop indexes
+        snapshots = db["analysis_report_snapshots"]
+        await snapshots.create_index([("report_id", 1)], unique=True)
+        await snapshots.create_index([("stock_symbol", 1), ("created_at", -1)])
+        await snapshots.create_index([("user_id", 1), ("stock_symbol", 1), ("created_at", -1)])
+        await snapshots.create_index([("analysis_id", 1)], sparse=True)
+        await snapshots.create_index([("task_id", 1)], sparse=True)
+
+        comparisons = db["analysis_report_comparisons"]
+        await comparisons.create_index(
+            [("base_report_id", 1), ("current_report_id", 1), ("base_report_hash", 1), ("current_report_hash", 1)]
+        )
+        await comparisons.create_index([("stock_symbol", 1), ("created_at", -1)])
+
+        review_tasks = db["analysis_review_tasks"]
+        await review_tasks.create_index([("review_id", 1)], unique=True)
+        await review_tasks.create_index([("user_id", 1), ("status", 1), ("due_at", 1)])
+        await review_tasks.create_index([("stock_symbol", 1), ("created_at", -1)])
+        await review_tasks.create_index([("source_report_id", 1)])
+
+        evidence_packs = db["analysis_evidence_packs"]
+        await evidence_packs.create_index([("evidence_pack_id", 1)], unique=True)
+        await evidence_packs.create_index([("review_id", 1)])
+
+        review_evaluations = db["analysis_review_evaluations"]
+        await review_evaluations.create_index([("evaluation_id", 1)], unique=True)
+        await review_evaluations.create_index([("review_id", 1), ("created_at", -1)])
+
         logger.info("✅ 数据库索引创建完成")
 
     except Exception as e:

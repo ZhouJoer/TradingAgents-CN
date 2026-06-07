@@ -32,6 +32,7 @@ from app.services.config_service import ConfigService
 from app.services.memory_state_manager import get_memory_state_manager, TaskStatus
 from app.services.redis_progress_tracker import RedisProgressTracker, get_progress_by_id
 from app.services.progress_log_handler import register_analysis_tracker, unregister_analysis_tracker
+from app.services.history_review_context_service import HistoryReviewContextService
 
 # 股票基础信息获取（用于补充显示名称）
 try:
@@ -883,9 +884,12 @@ class SimpleAnalysisService:
             def create_progress_tracker():
                 """在线程中创建进度跟踪器"""
                 logger.info(f"📊 [线程] 创建进度跟踪器: {task_id}")
+                _, tracking_analysts = self._split_review_analyst(
+                    request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"]
+                )
                 tracker = RedisProgressTracker(
                     task_id=task_id,
-                    analysts=request.parameters.selected_analysts or ["market", "fundamentals"],
+                    analysts=tracking_analysts,
                     research_depth=request.parameters.research_depth or "标准",
                     llm_provider="dashscope"
                 )
@@ -1065,6 +1069,66 @@ class SimpleAnalysisService:
         logger.info(f"✅ [线程池] 分析任务执行完成: {task_id}")
         return result
 
+    def _split_review_analyst(self, selected_analysts: list) -> tuple[bool, list]:
+        selected = list(selected_analysts or ["market", "fundamentals"])
+        review_enabled = "review" in selected
+        graph_analysts = [analyst for analyst in selected if analyst != "review"]
+        if not graph_analysts:
+            graph_analysts = ["market", "fundamentals"]
+        return review_enabled, graph_analysts
+
+    def _get_model_runtime_config_sync(self, model_name: str) -> dict:
+        """Read model runtime limits for context budgeting and LLM construction."""
+        config = {
+            "model_name": model_name,
+            "max_tokens": 4000,
+            "temperature": 0.7,
+            "timeout": 180,
+            "retry_times": 3,
+            "context_length": None,
+        }
+        try:
+            from pymongo import MongoClient
+            from app.core.config import settings
+
+            client = MongoClient(settings.MONGO_URI)
+            db = client[settings.MONGO_DB]
+            doc = db.system_configs.find_one({"is_active": True}, sort=[("version", -1)])
+            if doc and isinstance(doc.get("llm_configs"), list):
+                for item in doc["llm_configs"]:
+                    if item.get("model_name") == model_name:
+                        for key in ("max_tokens", "temperature", "timeout", "retry_times", "context_length"):
+                            if item.get(key) not in (None, ""):
+                                config[key] = item.get(key)
+                        break
+
+            if not config.get("context_length"):
+                catalog = db.model_catalog.find_one({
+                    "models": {"$elemMatch": {"name": model_name}}
+                })
+                if catalog:
+                    for model in catalog.get("models", []):
+                        if model.get("name") == model_name and model.get("context_length"):
+                            config["context_length"] = model.get("context_length")
+                            if model.get("max_tokens") and config.get("max_tokens") == 4000:
+                                config["max_tokens"] = model.get("max_tokens")
+                            break
+            client.close()
+        except Exception as exc:
+            logger.warning(f"⚠️ 读取模型运行配置失败: {model_name} - {exc}")
+
+        for key in ("max_tokens", "timeout", "retry_times", "context_length"):
+            if config.get(key) is not None:
+                try:
+                    config[key] = int(config[key])
+                except Exception:
+                    config[key] = None if key == "context_length" else 4000
+        try:
+            config["temperature"] = float(config.get("temperature", 0.7))
+        except Exception:
+            config["temperature"] = 0.7
+        return config
+
     def _run_analysis_sync(
         self,
         task_id: str,
@@ -1147,6 +1211,15 @@ class SimpleAnalysisService:
             capability_service = get_model_capability_service()
 
             research_depth = request.parameters.research_depth if request.parameters else "标准"
+            selected_analysts = request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"]
+            review_analyst_enabled, graph_analysts = self._split_review_analyst(selected_analysts)
+            include_history_context = bool(
+                request.parameters
+                and (request.parameters.include_history_context or review_analyst_enabled)
+            )
+            review_context = ""
+            review_context_meta = {"enabled": include_history_context}
+            review_context_report = ""
 
             # 1. 检查前端是否指定了模型
             if (request.parameters and
@@ -1193,6 +1266,8 @@ class SimpleAnalysisService:
             # 🔧 根据快速模型和深度模型分别查找对应的供应商和 API URL
             quick_provider_info = get_provider_and_url_by_model_sync(quick_model)
             deep_provider_info = get_provider_and_url_by_model_sync(deep_model)
+            quick_model_config = self._get_model_runtime_config_sync(quick_model)
+            deep_model_config = self._get_model_runtime_config_sync(deep_model)
 
             quick_provider = quick_provider_info["provider"]
             deep_provider = deep_provider_info["provider"]
@@ -1203,6 +1278,12 @@ class SimpleAnalysisService:
             logger.info(f"🔍 [API地址] 快速模型使用 backend_url: {quick_backend_url}")
             logger.info(f"🔍 [供应商查找] 深度模型 {deep_model} 对应的供应商: {deep_provider}")
             logger.info(f"🔍 [API地址] 深度模型使用 backend_url: {deep_backend_url}")
+            logger.info(
+                "🧾 [复盘分析员] 模型上下文检查: deep_model=%s, context_length=%s, max_tokens=%s",
+                deep_model,
+                deep_model_config.get("context_length") or "unknown",
+                deep_model_config.get("max_tokens"),
+            )
 
             # 检查两个模型是否来自同一个厂家
             if quick_provider == deep_provider:
@@ -1217,11 +1298,13 @@ class SimpleAnalysisService:
             # 创建分析配置（支持混合模式）
             config = create_analysis_config(
                 research_depth=research_depth,
-                selected_analysts=request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"],
+                selected_analysts=graph_analysts,
                 quick_model=quick_model,
                 deep_model=deep_model,
                 llm_provider=quick_provider,  # 主要使用快速模型的供应商
                 market_type=market_type,  # 使用前端传递的市场类型
+                quick_model_config=quick_model_config,
+                deep_model_config=deep_model_config,
                 risk_preference=request.parameters.risk_preference if request.parameters else "neutral"
             )
 
@@ -1262,6 +1345,32 @@ class SimpleAnalysisService:
                 analysis_date = datetime.now().strftime("%Y-%m-%d")
                 logger.info(f"📅 使用当前日期作为分析日期: {analysis_date}")
 
+            if include_history_context:
+                review_depth = request.parameters.review_depth if request.parameters else "auto"
+                review_result = HistoryReviewContextService().build(
+                    stock_code=request.get_symbol(),
+                    user_id=user_id,
+                    research_depth=research_depth,
+                    requested_depth=review_depth,
+                    current_analysis_date=analysis_date,
+                    model_name=deep_model,
+                    model_config=deep_model_config,
+                )
+                review_context = review_result.prompt_context
+                review_context_report = review_result.display_report
+                review_context_meta = review_result.meta
+                if review_context:
+                    logger.info(
+                        "🧾 [复盘分析员] 已构建历史报告复盘上下文: reports=%s, tokens=%s/%s, truncated=%s, compressed=%s",
+                        review_context_meta.get("reports_used"),
+                        review_context_meta.get("estimated_tokens"),
+                        review_context_meta.get("token_budget"),
+                        review_context_meta.get("truncated"),
+                        review_context_meta.get("budget_limited"),
+                    )
+                else:
+                    logger.info("🧾 [复盘分析员] 未找到可用历史报告，本次不注入历史报告复盘上下文")
+
             # 🔧 智能日期范围处理：获取最近10天的数据，自动处理周末/节假日
             # 这样可以确保即使是周末或节假日，也能获取到最后一个交易日的数据
             from tradingagents.utils.dataflow_utils import get_trading_date_range
@@ -1286,7 +1395,7 @@ class SimpleAnalysisService:
                         return
 
                     # 分析师阶段 - 根据选择的分析师数量动态调整
-                    analysts = request.parameters.selected_analysts if request.parameters else ["market", "fundamentals"]
+                    analysts = graph_analysts
 
                     # 模拟分析师执行
                     for i, analyst in enumerate(analysts):
@@ -1483,10 +1592,11 @@ class SimpleAnalysisService:
 
             # 执行实际分析，传递进度回调和task_id
             state, decision = trading_graph.propagate(
-                request.stock_code,
+                request.get_symbol(),
                 analysis_date,
                 progress_callback=graph_progress_callback,
-                task_id=task_id
+                task_id=task_id,
+                review_context=review_context
             )
 
             logger.info(f"✅ trading_graph.propagate 执行完成")
@@ -1762,10 +1872,13 @@ class SimpleAnalysisService:
 
             # 从决策中提取模型信息
             model_info = decision.get('model_info', 'Unknown') if isinstance(decision, dict) else 'Unknown'
+            if review_context_report:
+                reports["review_context_report"] = review_context_report
 
             # 构建结果
             result = {
                 "analysis_id": str(uuid.uuid4()),
+                "user_id": str(user_id),
                 "stock_code": request.stock_code,
                 "stock_symbol": request.stock_code,  # 添加stock_symbol字段以保持兼容性
                 "analysis_date": analysis_date,
@@ -1787,6 +1900,7 @@ class SimpleAnalysisService:
                 "decision": formatted_decision,
                 # 🔥 添加模型信息字段
                 "model_info": model_info,
+                "review_context_meta": review_context_meta,
                 # 🆕 性能指标数据
                 "performance_metrics": state.get("performance_metrics", {}) if isinstance(state, dict) else {}
             }
@@ -2377,7 +2491,7 @@ class SimpleAnalysisService:
             analysis_id = f"{stock_symbol}_{timestamp.strftime('%Y%m%d_%H%M%S')}"
 
             # 处理reports字段 - 从state中提取所有分析报告
-            reports = {}
+            reports = dict(result.get("reports") or {})
             if 'state' in result:
                 try:
                     state = result['state']
@@ -2567,6 +2681,7 @@ class SimpleAnalysisService:
             # 构建文档（与web目录的MongoDBReportManager保持一致）
             document = {
                 "analysis_id": analysis_id,
+                "user_id": result.get("user_id"),
                 "stock_symbol": stock_symbol,
                 "stock_name": stock_name,  # 🔥 添加股票名称字段
                 "market_type": market_type,  # 🔥 添加市场类型字段
@@ -2586,6 +2701,7 @@ class SimpleAnalysisService:
 
                 # 🔥 关键修复：添加格式化后的decision字段！
                 "decision": result.get("decision", {}),
+                "review_context_meta": result.get("review_context_meta", {}),
 
                 # 元数据
                 "created_at": timestamp,
@@ -2615,6 +2731,7 @@ class SimpleAnalysisService:
                     {"task_id": task_id},
                     {"$set": {"result": {
                         "analysis_id": analysis_id,
+                        "user_id": result.get("user_id"),
                         "stock_symbol": stock_symbol,
                         "stock_code": result.get('stock_code', stock_symbol),
                         "analysis_date": result.get('analysis_date'),
@@ -2628,7 +2745,8 @@ class SimpleAnalysisService:
                         "tokens_used": result.get("tokens_used", 0),
                         "reports": reports,  # 包含提取的报告内容
                         # 🔥 关键修复：添加格式化后的decision字段！
-                        "decision": result.get("decision", {})
+                        "decision": result.get("decision", {}),
+                        "review_context_meta": result.get("review_context_meta", {})
                     }}}
                 )
                 logger.info(f"💾 分析结果已保存 (web风格): {task_id}")
@@ -2845,6 +2963,14 @@ class SimpleAnalysisService:
 
                 saved_files['final_trade_decision'] = str(decision_file)
                 logger.info(f"✅ 保存最终决策: {decision_file}")
+
+            review_report = (result.get("reports") or {}).get("review_context_report")
+            if isinstance(review_report, str) and review_report.strip():
+                review_file = reports_dir / "review_context_report.md"
+                with open(review_file, 'w', encoding='utf-8') as f:
+                    f.write(review_report.strip())
+                saved_files['review_context_report'] = str(review_file)
+                logger.info(f"✅ 保存历史报告复盘: {review_file}")
 
             # 保存分析元数据文件 - 完全按照web目录的方式
             metadata = {

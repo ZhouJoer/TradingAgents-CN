@@ -29,6 +29,8 @@ export interface SingleAnalysisRequest {
     research_depth?: string
     selected_analysts?: string[]
     custom_prompt?: string
+    include_history_context?: boolean
+    review_depth?: 'auto' | 'quick' | 'standard' | 'deep'
     include_sentiment?: boolean
     include_risk?: boolean
     risk_preference?: 'conservative' | 'neutral' | 'aggressive'
@@ -477,7 +479,6 @@ export const getStockPlaceholder = (market: string): string => {
   }
   return placeholders[market] ?? '输入股票代码'
 }
-
 
 
 

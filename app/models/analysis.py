@@ -45,6 +45,8 @@ class AnalysisParameters(BaseModel):
     research_depth: str = "标准"  # 默认使用3级标准分析（推荐）
     selected_analysts: List[str] = Field(default_factory=lambda: ["market", "fundamentals", "news", "social"])
     custom_prompt: Optional[str] = None
+    include_history_context: bool = False
+    review_depth: str = "auto"
     include_sentiment: bool = True
     include_risk: bool = True
     risk_preference: str = "neutral"  # conservative / neutral / aggressive

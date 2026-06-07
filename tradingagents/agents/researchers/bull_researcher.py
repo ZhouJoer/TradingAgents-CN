@@ -20,6 +20,7 @@ def create_bull_researcher(llm, memory):
         sentiment_report = state["sentiment_report"]
         news_report = state["news_report"]
         fundamentals_report = state["fundamentals_report"]
+        history_review_report = state.get("history_review_report", "")
 
         # 使用统一的股票类型检测
         ticker = state.get('company_of_interest', 'Unknown')
@@ -123,6 +124,7 @@ def create_bull_researcher(llm, memory):
 社交媒体情绪报告：{sentiment_report}
 最新世界事务新闻：{news_report}
 公司基本面报告：{fundamentals_report}
+历史报告复盘：{history_review_report if history_review_report else "本次未启用历史报告复盘。"}
 辩论对话历史：{history}
 最后的看跌论点：{current_response}
 类似情况的反思和经验教训：{past_memory_str}
