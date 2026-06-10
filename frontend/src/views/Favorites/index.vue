@@ -79,6 +79,10 @@
               <el-icon><Refresh /></el-icon>
               同步实时行情
             </el-button>
+            <el-button type="warning" @click="batchAnalyzeSelectedFavorites">
+              <el-icon><TrendCharts /></el-icon>
+              批量分析 ({{ selectedStocks.length }})
+            </el-button>
             <!-- 只有选中的股票都是A股时才显示批量同步按钮 -->
             <el-button
               v-if="selectedStocksAreAllAShares"
@@ -507,7 +511,8 @@ import {
   Search,
   Refresh,
   Plus,
-  Download
+  Download,
+  TrendCharts
 } from '@element-plus/icons-vue'
 import { favoritesApi } from '@/api/favorites'
 import { tagsApi } from '@/api/tags'
@@ -987,6 +992,49 @@ const analyzeFavorite = (row: any) => {
   router.push({
     name: 'SingleAnalysis',
     query: { stock: row.stock_code, market: normalizeMarketForAnalysis(row.market || 'A股') }
+  })
+}
+
+const batchAnalyzeSelectedFavorites = () => {
+  if (selectedStocks.value.length === 0) {
+    ElMessage.warning('请先选择要分析的股票')
+    return
+  }
+
+  const seen = new Set<string>()
+  const symbols = selectedStocks.value
+    .map(stock => String(stock.stock_code || '').trim())
+    .filter(code => {
+      if (!code || seen.has(code)) return false
+      seen.add(code)
+      return true
+    })
+
+  if (symbols.length === 0) {
+    ElMessage.warning('选中的自选股缺少股票代码')
+    return
+  }
+
+  if (symbols.length > 10) {
+    ElMessage.warning('单次批量分析最多支持10只股票，请减少股票数量')
+    return
+  }
+
+  const markets = Array.from(
+    new Set(selectedStocks.value.map(stock => normalizeMarketForAnalysis(stock.market || 'A股')))
+  )
+  const query: Record<string, string> = {
+    stocks: symbols.join(','),
+    source: 'favorites'
+  }
+
+  if (markets.length === 1) {
+    query.market = markets[0]
+  }
+
+  router.push({
+    name: 'BatchAnalysis',
+    query
   })
 }
 

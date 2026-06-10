@@ -453,6 +453,10 @@ onMounted(async () => {
     // 触发解析以更新 symbols
     parseStockCodes()
   }
+
+  if (q?.source === 'favorites' && !batchForm.title) {
+    batchForm.title = '自选股批量分析'
+  }
 })
 
 const removeStock = (index: number) => {
