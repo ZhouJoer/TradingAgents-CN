@@ -3,10 +3,12 @@ TradingAgents-CN Backend Entry Point
 支持 python -m app 启动方式
 """
 
-import uvicorn
 import sys
 import os
+import socket
+import subprocess
 from pathlib import Path
+from typing import Dict, List, Tuple
 
 # ============================================================================
 # 全局 UTF-8 编码设置（必须在最开始，支持 emoji 和中文）
@@ -97,23 +99,112 @@ def check_env_file():
     
     logger.info("-" * 50)
 
-try:
-    from app.core.config import settings
-    from app.core.dev_config import DEV_CONFIG
-except Exception as e:
-    import traceback
-    print(f"❌ 导入配置模块失败: {e}")
-    print("📋 详细错误信息:")
-    print("-" * 50)
-    traceback.print_exc()
-    print("-" * 50)
-    sys.exit(1)
+
+def find_port_owner_pids(port: int) -> List[str]:
+    """Return process IDs listening on a local TCP port when available."""
+    if sys.platform != 'win32':
+        return []
+
+    try:
+        result = subprocess.run(
+            ["netstat", "-ano"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            check=False
+        )
+    except Exception:
+        return []
+
+    pids: List[str] = []
+    marker = f":{port}"
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[3].upper() == "LISTENING":
+            if parts[1].endswith(marker) and parts[-1] not in pids:
+                pids.append(parts[-1])
+    return pids
+
+
+def ensure_port_available(host: str, port: int) -> None:
+    """Fail fast when the configured backend port is already occupied."""
+    bind_host = host if host not in {"0.0.0.0", "::"} else ""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((bind_host, port))
+    except OSError:
+        pids = find_port_owner_pids(port)
+        owner_hint = f" 占用进程 PID: {', '.join(pids)}。" if pids else ""
+        print(
+            f"❌ 后端端口 {port} 已被占用，当前启动已停止。{owner_hint}\n"
+            f"💡 如果网页仍有响应，通常说明已有后端实例正在运行。\n"
+            f"💡 请先停止旧进程，或修改 .env 中的 PORT 后重新启动。",
+            file=sys.stderr
+        )
+        sys.exit(1)
+
+
+def read_startup_bind_config() -> Tuple[str, int]:
+    """Read HOST/PORT cheaply before importing pydantic settings."""
+    values: Dict[str, str] = {}
+    env_path = project_root / ".env"
+
+    if env_path.exists():
+        try:
+            with env_path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    values[key.strip()] = value.strip().strip('"').strip("'")
+        except Exception:
+            pass
+
+    host = (
+        os.environ.get("HOST")
+        or os.environ.get("API_HOST")
+        or values.get("HOST")
+        or values.get("API_HOST")
+        or "0.0.0.0"
+    )
+    port_raw = (
+        os.environ.get("PORT")
+        or os.environ.get("API_PORT")
+        or values.get("PORT")
+        or values.get("API_PORT")
+        or "8000"
+    )
+
+    try:
+        port = int(port_raw)
+    except (TypeError, ValueError):
+        port = 8000
+
+    return host, port
 
 
 def main():
     """主启动函数"""
     import logging
     logger = logging.getLogger("app.startup")
+
+    startup_host, startup_port = read_startup_bind_config()
+    ensure_port_available(startup_host, startup_port)
+
+    try:
+        from app.core.config import settings
+        from app.core.dev_config import DEV_CONFIG
+    except Exception as e:
+        import traceback
+        print(f"❌ 导入配置模块失败: {e}")
+        print("📋 详细错误信息:")
+        print("-" * 50)
+        traceback.print_exc()
+        print("-" * 50)
+        sys.exit(1)
     
     logger.info("🚀 Starting TradingAgents-CN Backend...")
     logger.info(f"📍 Host: {settings.HOST}")
@@ -158,11 +249,16 @@ def main():
         DEV_CONFIG.setup_logging(settings.DEBUG)
     logger.info("✅ 日志配置设置完成")
 
+    if (settings.HOST, settings.PORT) != (startup_host, startup_port):
+        ensure_port_available(settings.HOST, settings.PORT)
+
     # 在日志系统初始化后检查.env文件
     logger.info("📋 Configuration Loading Phase:")
     check_env_file()
 
     try:
+        import uvicorn
+
         uvicorn.run(
             "app.main:app",
             host=settings.HOST,

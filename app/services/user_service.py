@@ -3,6 +3,7 @@
 """
 
 import hashlib
+import sys
 import time
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -31,16 +32,23 @@ class UserService:
         self.client = MongoClient(settings.MONGO_URI)
         self.db = self.client[settings.MONGO_DB]
         self.users_collection = self.db.users
+        self._closed = False
 
-    def close(self):
+    def close(self, log: bool = True):
         """关闭数据库连接"""
-        if hasattr(self, 'client') and self.client:
+        if not getattr(self, '_closed', False) and hasattr(self, 'client') and self.client:
             self.client.close()
-            logger.info("✅ UserService MongoDB 连接已关闭")
+            self.client = None
+            self._closed = True
+            if log and not sys.is_finalizing():
+                logger.info("✅ UserService MongoDB 连接已关闭")
 
     def __del__(self):
         """析构函数，确保连接被关闭"""
-        self.close()
+        try:
+            self.close(log=False)
+        except Exception:
+            pass
     
     @staticmethod
     def hash_password(password: str) -> str:
