@@ -96,6 +96,24 @@ def create_news_analyst(llm, toolkit):
         company_name = _get_company_name(ticker, market_info)
         instrument_context = build_instrument_context(ticker)
         logger.info(f"[新闻分析师] 公司名称: {company_name}")
+
+        def _news_fetch_failure_report(raw_news: str = "") -> str:
+            """生成明确的数据获取失败报告，避免误判为无新闻。"""
+            detail = raw_news.strip() if raw_news else "所有新闻源均未返回可用新闻数据。"
+            return f"""# {company_name}（{ticker}）新闻数据获取失败
+
+## 数据状态
+
+本次新闻分析未能获取到可验证的新闻内容，因此不能据此判断“该股票没有新闻”。
+
+## 失败详情
+
+{detail}
+
+## 处理建议
+
+请检查新闻源连通性、API Key 配置、AKShare/东方财富接口可用性，以及本地 stock_news 缓存同步状态。修复数据源后建议重新运行新闻分析。
+"""
         
         # 🔧 使用统一新闻工具，简化工具调用
         logger.info(f"[新闻分析师] 使用统一新闻工具，自动识别股票类型并获取相应新闻")
@@ -382,13 +400,13 @@ def create_news_analyst(llm, toolkit):
                         logger.warning(f"[新闻分析师] ⚠️ 统一新闻工具获取失败或内容过短（{len(forced_news) if forced_news else 0}字符），使用原始结果")
                         if forced_news:
                             logger.warning(f"[新闻分析师] 📄 失败的新闻内容: {forced_news}")
-                        report = result.content if hasattr(result, 'content') else ""
+                        report = _news_fetch_failure_report(forced_news)
 
                 except Exception as e:
                     logger.error(f"[新闻分析师] ❌ 强制补救过程失败: {e}")
                     import traceback
                     logger.error(f"[新闻分析师] 📋 异常堆栈: {traceback.format_exc()}")
-                    report = result.content if hasattr(result, 'content') else ""
+                    report = _news_fetch_failure_report(str(e))
             else:
                 # 有工具调用时，部分OpenAI兼容模型只返回tool_calls，content为空。
                 # 这里主动执行统一新闻工具并基于真实新闻重新生成报告，避免news_report丢失。
@@ -426,11 +444,11 @@ def create_news_analyst(llm, toolkit):
                             report = fetched_news
                             logger.warning("[新闻分析师] 工具调用分支LLM返回为空，直接使用新闻数据作为报告")
                     else:
-                        report = result.content if hasattr(result, 'content') else ""
-                        logger.warning("[新闻分析师] 工具调用分支新闻数据为空，回退到原始LLM内容")
+                        report = _news_fetch_failure_report(fetched_news)
+                        logger.warning("[新闻分析师] 工具调用分支新闻数据为空，返回明确的数据获取失败报告")
                 except Exception as e:
                     logger.error(f"[新闻分析师] ❌ 执行工具调用分支失败: {e}", exc_info=True)
-                    report = result.content if hasattr(result, 'content') else ""
+                    report = _news_fetch_failure_report(str(e))
         
         total_time_taken = (datetime.now() - start_time).total_seconds()
         logger.info(f"[新闻分析师] 新闻分析完成，总耗时: {total_time_taken:.2f}秒")

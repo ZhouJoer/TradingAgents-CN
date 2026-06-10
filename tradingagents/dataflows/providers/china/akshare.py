@@ -1269,7 +1269,13 @@ class AKShareProvider(BaseStockDataProvider):
                             time.sleep(retry_delay)
                             retry_delay *= 2
                         else:
-                            raise
+                            self.logger.warning(f"⚠️ {symbol} AKShare新闻接口失败，尝试东方财富直连接口: {e}")
+                            news_df = self._get_stock_news_direct(symbol=symbol_6, limit=limit)
+                            break
+
+                if news_df is None or news_df.empty:
+                    self.logger.warning(f"⚠️ {symbol} AKShare未返回新闻，尝试东方财富直连接口")
+                    news_df = self._get_stock_news_direct(symbol=symbol_6, limit=limit)
 
                 if news_df is not None and not news_df.empty:
                     self.logger.info(f"✅ {symbol} AKShare新闻获取成功: {len(news_df)} 条")

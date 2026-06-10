@@ -63,6 +63,24 @@ class UnifiedNewsAnalyzer:
             logger.warning(f"[统一新闻工具] 📝 完整结果内容: '{result}'")
         
         return result
+
+    @staticmethod
+    def _is_usable_news_content(content: str) -> bool:
+        """判断工具返回内容是否真的是可分析新闻，而不是失败提示。"""
+        if not content or len(content.strip()) < 50:
+            return False
+
+        failure_markers = (
+            "实时新闻获取失败",
+            "所有可用的新闻源",
+            "无法获取",
+            "未找到相关新闻",
+            "错误信息",
+            "获取失败",
+            "API服务",
+            "新闻源均不可用",
+        )
+        return not any(marker in content for marker in failure_markers)
     
     def _identify_stock_type(self, stock_code: str) -> str:
         """识别股票类型"""
@@ -329,11 +347,11 @@ class UnifiedNewsAnalyzer:
                 logger.info(f"[统一新闻工具] 📊 东方财富返回内容长度: {len(result) if result else 0} 字符")
                 logger.info(f"[统一新闻工具] 📋 东方财富返回内容预览 (前500字符): {result[:500] if result else 'None'}")
                 
-                if result and len(result.strip()) > 100:
+                if self._is_usable_news_content(result):
                     logger.info(f"[统一新闻工具] ✅ 东方财富新闻获取成功: {len(result)} 字符")
                     return self._format_news_result(result, "东方财富实时新闻", model_info)
                 else:
-                    logger.warning(f"[统一新闻工具] ⚠️ 东方财富新闻内容过短或为空")
+                    logger.warning(f"[统一新闻工具] ⚠️ 东方财富未返回可用新闻内容")
         except Exception as e:
             logger.warning(f"[统一新闻工具] 东方财富新闻获取失败: {e}")
         
@@ -344,7 +362,7 @@ class UnifiedNewsAnalyzer:
                 query = f"{stock_code} 股票 新闻 财报 业绩"
                 # 使用LangChain工具的正确调用方式：.invoke()方法和字典参数
                 result = self.toolkit.get_google_news.invoke({"query": query, "curr_date": curr_date})
-                if result and len(result.strip()) > 50:
+                if self._is_usable_news_content(result):
                     logger.info(f"[统一新闻工具] ✅ Google新闻获取成功: {len(result)} 字符")
                     return self._format_news_result(result, "Google新闻", model_info)
         except Exception as e:
@@ -356,7 +374,7 @@ class UnifiedNewsAnalyzer:
                 logger.info(f"[统一新闻工具] 尝试OpenAI全球新闻...")
                 # 使用LangChain工具的正确调用方式：.invoke()方法和字典参数
                 result = self.toolkit.get_global_news_openai.invoke({"curr_date": curr_date})
-                if result and len(result.strip()) > 50:
+                if self._is_usable_news_content(result):
                     logger.info(f"[统一新闻工具] ✅ OpenAI新闻获取成功: {len(result)} 字符")
                     return self._format_news_result(result, "OpenAI全球新闻", model_info)
         except Exception as e:
@@ -378,7 +396,7 @@ class UnifiedNewsAnalyzer:
                 query = f"{stock_code} 港股 香港股票 新闻"
                 # 使用LangChain工具的正确调用方式：.invoke()方法和字典参数
                 result = self.toolkit.get_google_news.invoke({"query": query, "curr_date": curr_date})
-                if result and len(result.strip()) > 50:
+                if self._is_usable_news_content(result):
                     logger.info(f"[统一新闻工具] ✅ Google港股新闻获取成功: {len(result)} 字符")
                     return self._format_news_result(result, "Google港股新闻", model_info)
         except Exception as e:
@@ -390,7 +408,7 @@ class UnifiedNewsAnalyzer:
                 logger.info(f"[统一新闻工具] 尝试OpenAI港股新闻...")
                 # 使用LangChain工具的正确调用方式：.invoke()方法和字典参数
                 result = self.toolkit.get_global_news_openai.invoke({"curr_date": curr_date})
-                if result and len(result.strip()) > 50:
+                if self._is_usable_news_content(result):
                     logger.info(f"[统一新闻工具] ✅ OpenAI港股新闻获取成功: {len(result)} 字符")
                     return self._format_news_result(result, "OpenAI港股新闻", model_info)
         except Exception as e:
@@ -402,7 +420,7 @@ class UnifiedNewsAnalyzer:
                 logger.info(f"[统一新闻工具] 尝试实时港股新闻...")
                 # 使用LangChain工具的正确调用方式：.invoke()方法和字典参数
                 result = self.toolkit.get_realtime_stock_news.invoke({"ticker": stock_code, "curr_date": curr_date})
-                if result and len(result.strip()) > 100:
+                if self._is_usable_news_content(result):
                     logger.info(f"[统一新闻工具] ✅ 实时港股新闻获取成功: {len(result)} 字符")
                     return self._format_news_result(result, "实时港股新闻", model_info)
         except Exception as e:
@@ -423,7 +441,7 @@ class UnifiedNewsAnalyzer:
                 logger.info(f"[统一新闻工具] 尝试OpenAI美股新闻...")
                 # 使用LangChain工具的正确调用方式：.invoke()方法和字典参数
                 result = self.toolkit.get_global_news_openai.invoke({"curr_date": curr_date})
-                if result and len(result.strip()) > 50:
+                if self._is_usable_news_content(result):
                     logger.info(f"[统一新闻工具] ✅ OpenAI美股新闻获取成功: {len(result)} 字符")
                     return self._format_news_result(result, "OpenAI美股新闻", model_info)
         except Exception as e:
@@ -436,7 +454,7 @@ class UnifiedNewsAnalyzer:
                 query = f"{stock_code} stock news earnings financial"
                 # 使用LangChain工具的正确调用方式：.invoke()方法和字典参数
                 result = self.toolkit.get_google_news.invoke({"query": query, "curr_date": curr_date})
-                if result and len(result.strip()) > 50:
+                if self._is_usable_news_content(result):
                     logger.info(f"[统一新闻工具] ✅ Google美股新闻获取成功: {len(result)} 字符")
                     return self._format_news_result(result, "Google美股新闻", model_info)
         except Exception as e:
@@ -448,7 +466,7 @@ class UnifiedNewsAnalyzer:
                 logger.info(f"[统一新闻工具] 尝试FinnHub美股新闻...")
                 # 使用LangChain工具的正确调用方式：.invoke()方法和字典参数
                 result = self.toolkit.get_finnhub_news.invoke({"symbol": stock_code, "max_results": min(max_news, 50)})
-                if result and len(result.strip()) > 50:
+                if self._is_usable_news_content(result):
                     logger.info(f"[统一新闻工具] ✅ FinnHub美股新闻获取成功: {len(result)} 字符")
                     return self._format_news_result(result, "FinnHub美股新闻", model_info)
         except Exception as e:
