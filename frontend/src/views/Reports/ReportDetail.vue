@@ -103,6 +103,8 @@
         </el-alert>
       </div>
 
+      <ReportCredibilityPanel :credibility="report.credibility" />
+
       <!-- 关键指标 -->
       <el-card class="metrics-card" shadow="never">
         <template #header>
@@ -260,6 +262,7 @@ import { paperApi } from '@/api/paper'
 import { stocksApi } from '@/api/stocks'
 import { configApi, type LLMConfig } from '@/api/config'
 import HistoryReviewPanel from '@/components/reports/HistoryReviewPanel.vue'
+import ReportCredibilityPanel from '@/components/reports/ReportCredibilityPanel.vue'
 import {
   Document,
   Calendar,
@@ -302,6 +305,7 @@ type ReportDetailData = {
   key_points?: string[]
   summary?: string
   reports: Record<string, ReportModuleContent>
+  credibility?: any
 }
 
 // 路由和认证

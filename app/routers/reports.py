@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from .auth_db import get_current_user
 from ..core.database import get_mongo_db
 from ..core.response import ok
+from ..services.report_credibility_service import ReportCredibilityService
 from ..services.report_review_service import ReportReviewService
 from ..utils.timezone import to_config_tz
 import logging
@@ -422,6 +423,9 @@ async def get_report_detail(
                 "tokens_used": doc.get("tokens_used", 0)
             }
 
+        credibility_service = ReportCredibilityService(db)
+        report["credibility"] = await credibility_service.build(report)
+
         return {
             "success": True,
             "data": report,
@@ -533,6 +537,9 @@ async def download_report(
         if not doc:
             raise HTTPException(status_code=404, detail="报告不存在")
 
+        credibility_service = ReportCredibilityService(db)
+        doc["credibility"] = await credibility_service.build(doc)
+
         stock_symbol = doc.get("stock_symbol", "unknown")
         analysis_date = doc.get("analysis_date", datetime.now().strftime("%Y-%m-%d"))
 
@@ -563,6 +570,10 @@ async def download_report(
             content_parts.append(f"**分析师**: {', '.join(doc.get('analysts', []))}")
             content_parts.append(f"**研究深度**: {doc.get('research_depth', 1)}")
             content_parts.append("")
+
+            credibility_section = credibility_service.format_markdown(doc.get("credibility"))
+            if credibility_section:
+                content_parts.append(credibility_section)
 
             # 添加摘要
             if doc.get("summary"):

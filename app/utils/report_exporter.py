@@ -97,7 +97,12 @@ class ReportExporter:
         content_parts.append("")
         content_parts.append("---")
         content_parts.append("")
-        
+
+        # 可信度说明
+        credibility_section = self._format_credibility_markdown(report_doc.get("credibility"))
+        if credibility_section:
+            content_parts.append(credibility_section)
+
         # 执行摘要
         if summary:
             content_parts.append("## 📊 执行摘要")
@@ -163,6 +168,86 @@ class ReportExporter:
         logger.info(f"✅ Markdown 报告生成完成，长度: {len(markdown_content)} 字符")
         
         return markdown_content
+
+    def _format_credibility_markdown(self, credibility: Optional[Dict[str, Any]]) -> str:
+        """格式化可信度说明，供 Markdown/Word/PDF 导出共用。"""
+        if not credibility:
+            return ""
+
+        freshness = credibility.get("data_freshness") or {}
+        sources = credibility.get("data_sources") or {}
+        usage = credibility.get("model_usage") or {}
+        confidence = credibility.get("confidence_basis") or {}
+        missing_items = credibility.get("missing_items") or []
+        counter_evidence = credibility.get("counter_evidence") or []
+
+        def join_or_unknown(values):
+            return "、".join(str(item) for item in values) if values else "未知"
+
+        def format_cost():
+            cost = usage.get("cost")
+            if cost in (None, ""):
+                return "未知"
+            return f"{usage.get('currency') or 'CNY'} {float(cost):.6f}"
+
+        freshness_label = {
+            "fresh": "较新",
+            "stale": "可能过期",
+            "unknown": "未知",
+        }.get(freshness.get("freshness_level") or "", "未知")
+
+        parts = [
+            "## 可信度说明",
+            "",
+            f"- 数据新鲜度: {freshness_label}",
+            f"- 分析日期: {freshness.get('analysis_date') or '未知'}",
+            f"- 生成时间: {freshness.get('generated_at') or '未知'}",
+            f"- 行情更新时间: {freshness.get('market_quote_updated_at') or '未知'}",
+            f"- 基础信息更新时间: {freshness.get('stock_basic_updated_at') or '未知'}",
+            f"- 财务数据更新时间: {freshness.get('financial_updated_at') or '未知'}",
+            f"- 报告来源: {sources.get('report_source') or '未知'}",
+            f"- 已启用数据源: {join_or_unknown(sources.get('enabled_sources'))}",
+            f"- 可追踪数据源: {join_or_unknown(sources.get('observed_sources'))}",
+            f"- 实际来源记录: {'是' if sources.get('actual_source_recorded') else '否'}",
+            f"- 模型: {usage.get('model_info') or '未知'}",
+            f"- Token: {usage.get('tokens_used') if usage.get('tokens_used') not in (None, '') else '未知'}",
+            f"- 成本: {format_cost()}",
+            f"- 置信度: {confidence.get('label') or '未知'}",
+            "",
+        ]
+
+        notes = freshness.get("notes") or []
+        if notes:
+            parts.extend(["### 新鲜度备注", ""])
+            parts.extend(f"- {note}" for note in notes)
+            parts.append("")
+
+        parts.extend(["### 缺失项", ""])
+        if missing_items:
+            parts.extend(f"- [{item.get('severity', 'medium')}] {item.get('label')}: {item.get('reason')}" for item in missing_items)
+        else:
+            parts.append("- 未发现核心报告模块缺失。")
+        parts.append("")
+
+        parts.extend(["### 置信度依据", ""])
+        positive = confidence.get("positive_factors") or []
+        limiting = confidence.get("limiting_factors") or []
+        parts.append("正向因素:")
+        parts.extend(f"- {item}" for item in (positive or ["未记录明确正向依据。"]))
+        parts.append("")
+        parts.append("限制因素:")
+        parts.extend(f"- {item}" for item in (limiting or ["未记录明确限制因素。"]))
+        parts.append("")
+
+        parts.extend(["### 关键反证", ""])
+        if counter_evidence:
+            parts.extend(f"- [{item.get('source_module')}] {item.get('text')}" for item in counter_evidence)
+        else:
+            parts.append("- 未提取到明确反证。")
+        parts.append("")
+        parts.append("---")
+        parts.append("")
+        return "\n".join(parts)
     
     def _clean_markdown_for_pandoc(self, md_content: str) -> str:
         """清理 Markdown 内容，避免 pandoc 解析问题"""
@@ -665,4 +750,3 @@ pre, code {
 
 # 创建全局导出器实例
 report_exporter = ReportExporter()
-
