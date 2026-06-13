@@ -11,6 +11,7 @@ STRUCTURED_PAYLOAD_KEYS = (
     "stock_selection_sections",
     "supply_chain_analysis",
     "recommendation_groups",
+    "discovery_insights",
     "recommendations",
 )
 

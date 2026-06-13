@@ -14,6 +14,7 @@ model_spec.loader.exec_module(model_module)
 
 ConceptMappingResult = model_module.ConceptMappingResult
 DetailLevel = model_module.DetailLevel
+IndustryDiscoveryInsights = model_module.IndustryDiscoveryInsights
 IndustryAnalysisRequest = model_module.IndustryAnalysisRequest
 IndustryAnalysisResult = model_module.IndustryAnalysisResult
 StockCandidate = model_module.StockCandidate
@@ -163,6 +164,7 @@ class _FakeStockComparator:
             stock_selection_sections=None,
             supply_chain_analysis=[],
             recommendation_groups=[],
+            discovery_insights=IndustryDiscoveryInsights(),
         )
 
 
@@ -280,6 +282,7 @@ class IndustryAnalysisPipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.candidate_trace.mapping.user_concept, "AI相关")
         self.assertEqual(result.candidate_trace.original_count, 2)
         self.assertEqual(result.candidate_trace.filtered_count, 1)
+        self.assertIsNotNone(result.discovery_insights)
         self.assertGreater(result.analysis_time, 0)
 
     async def test_run_raises_when_mapping_has_no_boards(self):

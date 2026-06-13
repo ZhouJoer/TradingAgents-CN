@@ -362,6 +362,59 @@
             </div>
           </el-tab-pane>
 
+          <el-tab-pane label="主题发现" name="discovery">
+            <div class="tab-pane">
+              <div v-if="discoveryInsightSections.length" class="discovery-grid">
+                <el-card
+                  v-for="section in discoveryInsightSections"
+                  :key="section.key"
+                  class="inner-card discovery-card"
+                  shadow="never"
+                >
+                  <template #header>
+                    <div class="inner-card-header">
+                      <span>{{ section.title }}</span>
+                      <el-tag effect="plain" type="primary">{{ section.items.length }}</el-tag>
+                    </div>
+                  </template>
+
+                  <div class="discovery-list">
+                    <div v-for="(item, index) in section.items" :key="`${section.key}-${index}`" class="discovery-item">
+                      <div class="discovery-item-header">
+                        <strong>{{ item.title || section.title }}</strong>
+                        <el-tag :type="severityTagType(item.severity)" size="small">
+                          {{ severityText(item.severity) }}
+                        </el-tag>
+                      </div>
+                      <p v-if="item.summary">{{ item.summary }}</p>
+                      <dl>
+                        <div v-if="item.evidence">
+                          <dt>依据</dt>
+                          <dd>{{ item.evidence }}</dd>
+                        </div>
+                        <div v-if="item.tracking_signal">
+                          <dt>跟踪信号</dt>
+                          <dd>{{ item.tracking_signal }}</dd>
+                        </div>
+                        <div v-if="item.expected_timing">
+                          <dt>观察窗口</dt>
+                          <dd>{{ item.expected_timing }}</dd>
+                        </div>
+                      </dl>
+                      <div v-if="item.related_stocks?.length" class="trace-tags">
+                        <el-tag v-for="stock in item.related_stocks" :key="`${section.key}-${index}-${stock.code}`" effect="plain" size="small">
+                          {{ stock.name || stock.code }}
+                        </el-tag>
+                      </div>
+                    </div>
+                  </div>
+                </el-card>
+              </div>
+
+              <el-empty v-else description="本次结果未生成主题发现清单" :image-size="100" />
+            </div>
+          </el-tab-pane>
+
           <el-tab-pane label="行业逻辑" name="industry-logic">
             <div class="tab-pane">
               <div class="structured-grid">
@@ -574,6 +627,7 @@ import {
   type IndustryAnalysisResult,
   type IndustryAnalysisTask,
   type IndustryAnalysisTaskStatus,
+  type DiscoveryInsightItem,
   type StockRecommendation
 } from '@/api/industryAnalysis'
 import ModelConfig from '@/components/ModelConfig.vue'
@@ -591,6 +645,12 @@ interface StructuredSection {
   key: string
   title: string
   content: string
+}
+
+interface DiscoveryInsightSection {
+  key: string
+  title: string
+  items: DiscoveryInsightItem[]
 }
 
 const statusTextMap: Record<IndustryAnalysisTaskStatus, string> = {
@@ -639,6 +699,18 @@ const candidateTrace = computed(() => activeResult.value?.candidate_trace ?? nul
 const filterDetails = computed(() => candidateTrace.value?.filter_details ?? [])
 const supplyChainSegments = computed(() => activeResult.value?.supply_chain_analysis ?? [])
 const recommendationGroups = computed(() => activeResult.value?.recommendation_groups ?? [])
+const discoveryInsightSections = computed<DiscoveryInsightSection[]>(() => {
+  const insights = activeResult.value?.discovery_insights
+  if (!insights) return []
+
+  return [
+    { key: 'industry_bottlenecks', title: '产业瓶颈', items: insights.industry_bottlenecks || [] },
+    { key: 'non_consensus_targets', title: '非共识标的', items: insights.non_consensus_targets || [] },
+    { key: 'financial_inflections', title: '财务拐点', items: insights.financial_inflections || [] },
+    { key: 'red_team_counterpoints', title: '红队反证', items: insights.red_team_counterpoints || [] },
+    { key: 'future_catalysts', title: '未来催化事件', items: insights.future_catalysts || [] }
+  ].filter(section => section.items.length > 0)
+})
 const cleanDueDiligenceReport = computed(() => stripStructuredPayloadBlocks(activeResult.value?.due_diligence_report || ''))
 const cleanStockSelectionReport = computed(() => stripStructuredPayloadBlocks(activeResult.value?.stock_selection_report || ''))
 const progressStageMessage = computed(() => {
@@ -708,7 +780,8 @@ const stripStructuredPayloadBlocks = (content: string) => {
     text.includes('industry_logic_sections') ||
     text.includes('stock_selection_sections') ||
     text.includes('supply_chain_analysis') ||
-    text.includes('recommendation_groups')
+    text.includes('recommendation_groups') ||
+    text.includes('discovery_insights')
   )
 
   let cleaned = content.replace(/```(?:json)?\s*([\s\S]*?)\s*```/gi, (block, body) => {
@@ -757,6 +830,18 @@ const statusTagType = (status?: IndustryAnalysisTaskStatus) => {
   if (status === 'failed') return 'danger'
   if (status === 'running') return 'warning'
   return 'info'
+}
+
+const severityTagType = (severity?: string) => {
+  if (severity === 'high') return 'danger'
+  if (severity === 'low') return 'info'
+  return 'warning'
+}
+
+const severityText = (severity?: string) => {
+  if (severity === 'high') return '高'
+  if (severity === 'low') return '低'
+  return '中'
 }
 
 const formatScoreValue = (value: number) => {
@@ -1353,12 +1438,14 @@ onBeforeUnmount(() => {
 
 .structured-grid,
 .detail-grid,
-.group-grid {
+.group-grid,
+.discovery-grid {
   display: grid;
   gap: 20px;
 }
 
-.structured-grid {
+.structured-grid,
+.discovery-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -1375,6 +1462,52 @@ onBeforeUnmount(() => {
 
 .group-risk {
   margin: 12px 0;
+}
+
+.discovery-list {
+  display: grid;
+  gap: 14px;
+}
+
+.discovery-item {
+  padding: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 12px;
+  background: var(--el-fill-color-blank);
+}
+
+.discovery-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.discovery-item p {
+  margin: 10px 0;
+  color: var(--el-text-color-regular);
+  line-height: 1.7;
+}
+
+.discovery-item dl {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.discovery-item dl > div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.discovery-item dt {
+  color: var(--el-text-color-secondary);
+}
+
+.discovery-item dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .detail-card {
@@ -1503,7 +1636,8 @@ onBeforeUnmount(() => {
 
   .structured-grid,
   .detail-grid,
-  .group-grid {
+  .group-grid,
+  .discovery-grid {
     grid-template-columns: 1fr;
   }
 }

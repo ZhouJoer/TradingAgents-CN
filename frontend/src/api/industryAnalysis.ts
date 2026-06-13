@@ -120,6 +120,24 @@ export interface RecommendationGroup {
   stocks: StockRecommendation[]
 }
 
+export interface DiscoveryInsightItem {
+  title: string
+  summary: string
+  evidence: string
+  tracking_signal: string
+  expected_timing: string
+  severity: 'high' | 'medium' | 'low' | string
+  related_stocks: StockRecommendation[]
+}
+
+export interface IndustryDiscoveryInsights {
+  industry_bottlenecks: DiscoveryInsightItem[]
+  non_consensus_targets: DiscoveryInsightItem[]
+  financial_inflections: DiscoveryInsightItem[]
+  red_team_counterpoints: DiscoveryInsightItem[]
+  future_catalysts: DiscoveryInsightItem[]
+}
+
 export interface IndustryAnalysisResult {
   concept: string
   detail_level: IndustryAnalysisDetailLevel
@@ -143,6 +161,7 @@ export interface IndustryAnalysisResult {
   stock_selection_sections?: StockSelectionSections | null
   supply_chain_analysis?: SupplyChainSegment[]
   recommendation_groups?: RecommendationGroup[]
+  discovery_insights?: IndustryDiscoveryInsights | null
   // Meta
   analysis_time: number
   llm_calls: number

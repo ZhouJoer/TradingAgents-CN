@@ -174,6 +174,49 @@ def _build_recommendation_groups_markdown(groups: Any) -> str:
     return "\n".join(lines)
 
 
+def _build_discovery_insights_markdown(insights: Any) -> str:
+    if not isinstance(insights, dict):
+        return ""
+
+    categories = [
+        ("industry_bottlenecks", "产业瓶颈"),
+        ("non_consensus_targets", "非共识标的"),
+        ("financial_inflections", "财务拐点"),
+        ("red_team_counterpoints", "红队反证"),
+        ("future_catalysts", "未来催化事件"),
+    ]
+
+    lines = ["## 主题发现"]
+    has_items = False
+    for key, label in categories:
+        items = insights.get(key)
+        if not isinstance(items, list) or not items:
+            continue
+        has_items = True
+        lines.extend([
+            "",
+            f"### {label}",
+            "",
+            "|标题|摘要|依据|跟踪信号|观察窗口|等级|相关股票|",
+            "|---|---|---|---|---|---|---|",
+        ])
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            stocks = []
+            for stock in item.get("related_stocks") or []:
+                if isinstance(stock, dict):
+                    stocks.append(f"{stock.get('name') or stock.get('code')}({stock.get('code', '')})")
+            lines.append(
+                f"|{_table_cell(item.get('title'))}|{_table_cell(item.get('summary'))}|"
+                f"{_table_cell(item.get('evidence'))}|{_table_cell(item.get('tracking_signal'))}|"
+                f"{_table_cell(item.get('expected_timing'))}|{_table_cell(item.get('severity'))}|"
+                f"{_table_cell('、'.join(stocks))}|"
+            )
+
+    return "\n".join(lines) if has_items else ""
+
+
 def build_industry_markdown_report(task: dict) -> str:
     result = task.get("result")
     if not isinstance(result, dict):
@@ -221,6 +264,10 @@ def build_industry_markdown_report(task: dict) -> str:
 
     content_parts.extend(["", "---", ""])
     content_parts.extend(["## 分析过程", "", _build_candidate_trace_markdown(result.get("candidate_trace")), ""])
+
+    discovery_insights = _build_discovery_insights_markdown(result.get("discovery_insights"))
+    if discovery_insights:
+        content_parts.extend([discovery_insights, ""])
 
     industry_logic = _build_sections_markdown(
         "行业逻辑",

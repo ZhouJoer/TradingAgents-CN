@@ -68,6 +68,13 @@ class FavoriteStock(BaseModel):
     notes: str = Field(default="", description="用户备注")
     alert_price_high: Optional[float] = Field(None, description="价格上限提醒")
     alert_price_low: Optional[float] = Field(None, description="价格下限提醒")
+    watch_reason: str = Field(default="", description="关注理由")
+    target_price_low: Optional[float] = Field(None, description="目标价区间下限")
+    target_price_high: Optional[float] = Field(None, description="目标价区间上限")
+    risk_reminder: str = Field(default="", description="风险提醒")
+    next_review_date: Optional[str] = Field(None, description="下次复盘日期")
+    linked_report_ids: List[str] = Field(default_factory=list, description="关联报告ID")
+    message_alert_enabled: bool = Field(False, description="是否启用消息提醒")
 
 
 class User(BaseModel):

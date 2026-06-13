@@ -213,6 +213,7 @@ class IndustryAnalysisPipeline:
                 stock_selection_sections=two_stage_result.stock_selection_sections,
                 supply_chain_analysis=two_stage_result.supply_chain_analysis,
                 recommendation_groups=two_stage_result.recommendation_groups,
+                discovery_insights=self._model_dump(two_stage_result.discovery_insights),
                 analysis_time=round(time.perf_counter() - start_time, 4),
                 llm_calls=3,  # 1 concept mapping + 1 DD + 1 stock selection
                 data_date=date.today().isoformat(),
@@ -390,6 +391,11 @@ class IndustryAnalysisPipeline:
             source_boards=list(candidate.source_boards or []),
             key_metrics={key: metrics.get(key) for key in metric_names if metrics.get(key) is not None},
         )
+
+    def _model_dump(self, value: Any) -> Any:
+        if hasattr(value, "model_dump"):
+            return value.model_dump(mode="json")
+        return value
 
     async def _report_progress(
         self,

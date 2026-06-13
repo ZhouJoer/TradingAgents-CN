@@ -41,12 +41,27 @@ class IndustryAnalysisReportExportTests(unittest.TestCase):
                         "stocks": [{"code": "000001", "name": "平安银行", "score": 88}],
                     }
                 ],
+                "discovery_insights": {
+                    "industry_bottlenecks": [
+                        {
+                            "title": "算力供给瓶颈",
+                            "summary": "供给约束需要跟踪",
+                            "evidence": "产业链章节",
+                            "tracking_signal": "交付周期",
+                            "expected_timing": "季度",
+                            "severity": "medium",
+                            "related_stocks": [{"code": "000001", "name": "平安银行"}],
+                        }
+                    ]
+                },
             },
         }
 
         markdown = report_module.build_industry_markdown_report(task)
 
         self.assertIn("选股正文", markdown)
+        self.assertIn("主题发现", markdown)
+        self.assertIn("算力供给瓶颈", markdown)
         self.assertIn("分组推荐", markdown)
         self.assertIn("稳健龙头", markdown)
         self.assertNotIn("industry_logic_sections", markdown)

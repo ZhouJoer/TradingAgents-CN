@@ -26,6 +26,13 @@ class AddFavoriteRequest(BaseModel):
     notes: str = ""
     alert_price_high: Optional[float] = None
     alert_price_low: Optional[float] = None
+    watch_reason: str = ""
+    target_price_low: Optional[float] = None
+    target_price_high: Optional[float] = None
+    risk_reminder: str = ""
+    next_review_date: Optional[str] = None
+    linked_report_ids: List[str] = []
+    message_alert_enabled: bool = False
 
 
 class UpdateFavoriteRequest(BaseModel):
@@ -34,6 +41,13 @@ class UpdateFavoriteRequest(BaseModel):
     notes: Optional[str] = None
     alert_price_high: Optional[float] = None
     alert_price_low: Optional[float] = None
+    watch_reason: Optional[str] = None
+    target_price_low: Optional[float] = None
+    target_price_high: Optional[float] = None
+    risk_reminder: Optional[str] = None
+    next_review_date: Optional[str] = None
+    linked_report_ids: Optional[List[str]] = None
+    message_alert_enabled: Optional[bool] = None
 
 
 class FavoriteStockResponse(BaseModel):
@@ -46,6 +60,13 @@ class FavoriteStockResponse(BaseModel):
     notes: str
     alert_price_high: Optional[float]
     alert_price_low: Optional[float]
+    watch_reason: str = ""
+    target_price_low: Optional[float] = None
+    target_price_high: Optional[float] = None
+    risk_reminder: str = ""
+    next_review_date: Optional[str] = None
+    linked_report_ids: List[str] = []
+    message_alert_enabled: bool = False
     # 实时数据
     current_price: Optional[float] = None
     change_percent: Optional[float] = None
@@ -100,7 +121,14 @@ async def add_favorite(
             tags=request.tags,
             notes=request.notes,
             alert_price_high=request.alert_price_high,
-            alert_price_low=request.alert_price_low
+            alert_price_low=request.alert_price_low,
+            watch_reason=request.watch_reason,
+            target_price_low=request.target_price_low,
+            target_price_high=request.target_price_high,
+            risk_reminder=request.risk_reminder,
+            next_review_date=request.next_review_date,
+            linked_report_ids=request.linked_report_ids,
+            message_alert_enabled=request.message_alert_enabled,
         )
 
         logger.info(f"✅ 添加结果: success={success}")
@@ -132,13 +160,11 @@ async def update_favorite(
 ):
     """更新自选股信息"""
     try:
+        update_fields = request.model_dump(exclude_unset=True)
         success = await favorites_service.update_favorite(
             user_id=current_user["id"],
             stock_code=stock_code,
-            tags=request.tags,
-            notes=request.notes,
-            alert_price_high=request.alert_price_high,
-            alert_price_low=request.alert_price_low
+            **update_fields
         )
 
         if success:

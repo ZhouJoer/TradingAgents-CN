@@ -113,6 +113,37 @@
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="55" />
+        <el-table-column type="expand" width="48">
+          <template #default="{ row }">
+            <div class="tracking-panel">
+              <div class="tracking-item">
+                <span class="tracking-label">关注理由</span>
+                <p>{{ row.watch_reason || row.notes || '未记录' }}</p>
+              </div>
+              <div class="tracking-item">
+                <span class="tracking-label">风险提醒</span>
+                <p>{{ row.risk_reminder || '未记录' }}</p>
+              </div>
+              <div class="tracking-item">
+                <span class="tracking-label">目标价区间</span>
+                <p>{{ formatPriceRange(row.target_price_low, row.target_price_high) }}</p>
+              </div>
+              <div class="tracking-item">
+                <span class="tracking-label">价格提醒</span>
+                <p>{{ formatPriceRange(row.alert_price_low, row.alert_price_high) }}</p>
+              </div>
+              <div class="tracking-item">
+                <span class="tracking-label">关联报告</span>
+                <div class="tracking-tags">
+                  <el-tag v-for="reportId in row.linked_report_ids || []" :key="reportId" size="small" effect="plain">
+                    {{ reportId }}
+                  </el-tag>
+                  <span v-if="!(row.linked_report_ids || []).length" class="muted-text">未关联</span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="stock_code" label="股票代码" width="120">
           <template #default="{ row }">
             <el-link type="primary" @click="viewStockDetail(row)">
@@ -154,6 +185,29 @@
               {{ formatPercent(row.change_percent) }}
             </span>
             <span v-else>-</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="目标价" width="130">
+          <template #default="{ row }">
+            {{ formatPriceRange(row.target_price_low, row.target_price_high) }}
+          </template>
+        </el-table-column>
+
+        <el-table-column label="下次复盘" width="130">
+          <template #default="{ row }">
+            <el-tag v-if="row.next_review_date" :type="reviewTagType(row.next_review_date)" size="small">
+              {{ formatDate(row.next_review_date) }}
+            </el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="提醒" width="90">
+          <template #default="{ row }">
+            <el-tag :type="hasAnyReminder(row) ? 'warning' : 'info'" size="small">
+              {{ hasAnyReminder(row) ? '已设置' : '未设置' }}
+            </el-tag>
           </template>
         </el-table-column>
 
@@ -230,7 +284,7 @@
     <el-dialog
       v-model="addDialogVisible"
       title="添加自选股"
-      width="500px"
+      width="640px"
     >
       <el-form :model="addForm" :rules="addRules" ref="addFormRef" label-width="100px">
         <el-form-item label="市场类型" prop="market">
@@ -284,6 +338,44 @@
             placeholder="可选：添加备注信息"
           />
         </el-form-item>
+
+        <el-form-item label="关注理由">
+          <el-input v-model="addForm.watch_reason" type="textarea" :rows="2" placeholder="记录为什么关注这只股票" />
+        </el-form-item>
+
+        <el-form-item label="目标价区间">
+          <div class="range-inputs">
+            <el-input-number v-model="addForm.target_price_low" :min="0" :precision="2" placeholder="下限" controls-position="right" />
+            <span>至</span>
+            <el-input-number v-model="addForm.target_price_high" :min="0" :precision="2" placeholder="上限" controls-position="right" />
+          </div>
+        </el-form-item>
+
+        <el-form-item label="价格提醒">
+          <div class="range-inputs">
+            <el-input-number v-model="addForm.alert_price_low" :min="0" :precision="2" placeholder="低于" controls-position="right" />
+            <span>至</span>
+            <el-input-number v-model="addForm.alert_price_high" :min="0" :precision="2" placeholder="高于" controls-position="right" />
+          </div>
+        </el-form-item>
+
+        <el-form-item label="风险提醒">
+          <el-input v-model="addForm.risk_reminder" type="textarea" :rows="2" placeholder="记录需要警惕的风险或反证" />
+        </el-form-item>
+
+        <el-form-item label="下次复盘">
+          <el-date-picker v-model="addForm.next_review_date" type="date" value-format="YYYY-MM-DD" placeholder="选择复盘日期" />
+        </el-form-item>
+
+        <el-form-item label="关联报告">
+          <el-select v-model="addForm.linked_report_ids" multiple filterable allow-create default-first-option placeholder="输入报告ID后回车">
+            <el-option v-for="reportId in addForm.linked_report_ids" :key="reportId" :label="reportId" :value="reportId" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="消息提醒">
+          <el-switch v-model="addForm.message_alert_enabled" active-text="开启" inactive-text="关闭" />
+        </el-form-item>
       </el-form>
 
       <template #footer>
@@ -297,7 +389,7 @@
     <el-dialog
       v-model="editDialogVisible"
       title="编辑自选股"
-      width="520px"
+      width="680px"
     >
       <el-form :model="editForm" ref="editFormRef" label-width="100px">
         <el-form-item label="股票">
@@ -317,6 +409,44 @@
 
         <el-form-item label="备注">
           <el-input v-model="editForm.notes" type="textarea" :rows="2" placeholder="可选：添加备注信息" />
+        </el-form-item>
+
+        <el-form-item label="关注理由">
+          <el-input v-model="editForm.watch_reason" type="textarea" :rows="2" placeholder="记录为什么关注这只股票" />
+        </el-form-item>
+
+        <el-form-item label="目标价区间">
+          <div class="range-inputs">
+            <el-input-number v-model="editForm.target_price_low" :min="0" :precision="2" placeholder="下限" controls-position="right" />
+            <span>至</span>
+            <el-input-number v-model="editForm.target_price_high" :min="0" :precision="2" placeholder="上限" controls-position="right" />
+          </div>
+        </el-form-item>
+
+        <el-form-item label="价格提醒">
+          <div class="range-inputs">
+            <el-input-number v-model="editForm.alert_price_low" :min="0" :precision="2" placeholder="低于" controls-position="right" />
+            <span>至</span>
+            <el-input-number v-model="editForm.alert_price_high" :min="0" :precision="2" placeholder="高于" controls-position="right" />
+          </div>
+        </el-form-item>
+
+        <el-form-item label="风险提醒">
+          <el-input v-model="editForm.risk_reminder" type="textarea" :rows="2" placeholder="记录需要警惕的风险或反证" />
+        </el-form-item>
+
+        <el-form-item label="下次复盘">
+          <el-date-picker v-model="editForm.next_review_date" type="date" value-format="YYYY-MM-DD" placeholder="选择复盘日期" />
+        </el-form-item>
+
+        <el-form-item label="关联报告">
+          <el-select v-model="editForm.linked_report_ids" multiple filterable allow-create default-first-option placeholder="输入报告ID后回车">
+            <el-option v-for="reportId in editForm.linked_report_ids" :key="reportId" :label="reportId" :value="reportId" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="消息提醒">
+          <el-switch v-model="editForm.message_alert_enabled" active-text="开启" inactive-text="关闭" />
         </el-form-item>
       </el-form>
 
@@ -550,6 +680,40 @@ const selectedExchange = ref('')
 // 批量选择
 const selectedStocks = ref<FavoriteItem[]>([])
 
+interface FavoriteFormState {
+  stock_code: string
+  stock_name: string
+  market: string
+  tags: string[]
+  notes: string
+  alert_price_high: number | null
+  alert_price_low: number | null
+  watch_reason: string
+  target_price_low: number | null
+  target_price_high: number | null
+  risk_reminder: string
+  next_review_date: string | null
+  linked_report_ids: string[]
+  message_alert_enabled: boolean
+}
+
+const createEmptyFavoriteForm = (): FavoriteFormState => ({
+  stock_code: '',
+  stock_name: '',
+  market: 'A股',
+  tags: [],
+  notes: '',
+  alert_price_high: null,
+  alert_price_low: null,
+  watch_reason: '',
+  target_price_low: null,
+  target_price_high: null,
+  risk_reminder: '',
+  next_review_date: null,
+  linked_report_ids: [],
+  message_alert_enabled: false
+})
+
 // 批量同步对话框
 const batchSyncDialogVisible = ref(false)
 const batchSyncLoading = ref(false)
@@ -576,13 +740,7 @@ const singleSyncForm = ref({
 const addDialogVisible = ref(false)
 const addLoading = ref(false)
 const addFormRef = ref()
-const addForm = ref({
-  stock_code: '',
-  stock_name: '',
-  market: 'A股',
-  tags: [],
-  notes: ''
-})
+const addForm = ref<FavoriteFormState>(createEmptyFavoriteForm())
 
 // 股票代码验证器
 const validateStockCode = (_rule: any, value: any, callback: any) => {
@@ -634,13 +792,7 @@ const addRules = {
 const editDialogVisible = ref(false)
 const editLoading = ref(false)
 const editFormRef = ref()
-const editForm = ref({
-  stock_code: '',
-  stock_name: '',
-  market: 'A股',
-  tags: [] as string[],
-  notes: ''
-})
+const editForm = ref<FavoriteFormState>(createEmptyFavoriteForm())
 
 
 // 计算属性
@@ -862,13 +1014,7 @@ const refreshData = () => {
 }
 
 const showAddDialog = () => {
-  addForm.value = {
-    stock_code: '',
-    stock_name: '',
-    market: 'A股',
-    tags: [],
-    notes: ''
-  }
+  addForm.value = createEmptyFavoriteForm()
   addDialogVisible.value = true
 }
 
@@ -938,11 +1084,23 @@ const fetchStockInfo = async () => {
   }
 }
 
+const normalizeReportIds = (ids: string[]) => {
+  return (ids || [])
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+}
+
+const normalizeFavoritePayload = (form: FavoriteFormState) => ({
+  ...form,
+  next_review_date: form.next_review_date || null,
+  linked_report_ids: normalizeReportIds(form.linked_report_ids)
+})
+
 const handleAddFavorite = async () => {
   try {
     await addFormRef.value.validate()
     addLoading.value = true
-    const payload = { ...addForm.value }
+    const payload = normalizeFavoritePayload(addForm.value)
     const res = await favoritesApi.add(payload as any)
     if ((res as any)?.success === false) throw new Error((res as any)?.message || '添加失败')
     ElMessage.success('添加成功')
@@ -959,10 +1117,7 @@ const handleAddFavorite = async () => {
 const handleUpdateFavorite = async () => {
   try {
     editLoading.value = true
-    const payload = {
-      tags: editForm.value.tags,
-      notes: editForm.value.notes
-    }
+    const payload = normalizeFavoritePayload(editForm.value)
     const res = await favoritesApi.update(editForm.value.stock_code, payload as any)
     if ((res as any)?.success === false) throw new Error((res as any)?.message || '更新失败')
     ElMessage.success('保存成功')
@@ -983,7 +1138,16 @@ const editFavorite = (row: any) => {
     stock_name: row.stock_name,
     market: row.market || 'A股',
     tags: Array.isArray(row.tags) ? [...row.tags] : [],
-    notes: row.notes || ''
+    notes: row.notes || '',
+    alert_price_high: row.alert_price_high ?? null,
+    alert_price_low: row.alert_price_low ?? null,
+    watch_reason: row.watch_reason || '',
+    target_price_low: row.target_price_low ?? null,
+    target_price_high: row.target_price_high ?? null,
+    risk_reminder: row.risk_reminder || '',
+    next_review_date: row.next_review_date || null,
+    linked_report_ids: Array.isArray(row.linked_report_ids) ? [...row.linked_report_ids] : [],
+    message_alert_enabled: Boolean(row.message_alert_enabled)
   }
   editDialogVisible.value = true
 }
@@ -1230,8 +1394,40 @@ const formatPercent = (value: any): string => {
   return `${sign}${n.toFixed(2)}%`
 }
 
-const formatDate = (dateStr: string) => {
-  return new Date(dateStr).toLocaleDateString('zh-CN')
+const formatPriceRange = (low?: number | null, high?: number | null) => {
+  const hasLow = low !== null && low !== undefined && Number.isFinite(Number(low))
+  const hasHigh = high !== null && high !== undefined && Number.isFinite(Number(high))
+  if (hasLow && hasHigh) return `¥${formatPrice(low)} - ¥${formatPrice(high)}`
+  if (hasLow) return `≥ ¥${formatPrice(low)}`
+  if (hasHigh) return `≤ ¥${formatPrice(high)}`
+  return '未设置'
+}
+
+const formatDate = (dateStr?: string | null) => {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return dateStr
+  return date.toLocaleDateString('zh-CN')
+}
+
+const reviewTagType = (dateStr?: string | null) => {
+  if (!dateStr) return 'info'
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return 'info'
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime() <= today.getTime() ? 'danger' : 'success'
+}
+
+const hasAnyReminder = (item: FavoriteItem) => {
+  return Boolean(
+    item.message_alert_enabled ||
+    item.risk_reminder ||
+    item.next_review_date ||
+    item.alert_price_high !== null && item.alert_price_high !== undefined ||
+    item.alert_price_low !== null && item.alert_price_low !== undefined
+  )
 }
 
 // 生命周期
@@ -1275,6 +1471,52 @@ onMounted(() => {
     }
   }
 
+  .tracking-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    padding: 12px 18px;
+    background: var(--el-fill-color-extra-light);
+  }
+
+  .tracking-item {
+    min-width: 0;
+
+    p {
+      margin: 6px 0 0;
+      color: var(--el-text-color-primary);
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .tracking-label {
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+  }
+
+  .tracking-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .muted-text {
+    color: var(--el-text-color-secondary);
+  }
+
+  .range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .range-inputs :deep(.el-input-number) {
+    width: 160px;
+  }
+
   /* 颜色选项样式 */
   .color-dot {
     display: inline-block;
@@ -1313,6 +1555,21 @@ onMounted(() => {
 
     .text-green {
       color: #67c23a;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .tracking-panel {
+      grid-template-columns: 1fr;
+    }
+
+    .range-inputs {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .range-inputs :deep(.el-input-number) {
+      width: 100%;
     }
   }
 }

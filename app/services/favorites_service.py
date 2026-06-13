@@ -13,6 +13,20 @@ from app.services.quotes_service import get_quotes_service
 
 class FavoritesService:
     """自选股服务类"""
+
+    UPDATE_FIELDS = {
+        "tags",
+        "notes",
+        "alert_price_high",
+        "alert_price_low",
+        "watch_reason",
+        "target_price_low",
+        "target_price_high",
+        "risk_reminder",
+        "next_review_date",
+        "linked_report_ids",
+        "message_alert_enabled",
+    }
     
     def __init__(self):
         self.db = None
@@ -48,6 +62,13 @@ class FavoritesService:
             "notes": favorite.get("notes", ""),
             "alert_price_high": favorite.get("alert_price_high"),
             "alert_price_low": favorite.get("alert_price_low"),
+            "watch_reason": favorite.get("watch_reason", ""),
+            "target_price_low": favorite.get("target_price_low"),
+            "target_price_high": favorite.get("target_price_high"),
+            "risk_reminder": favorite.get("risk_reminder", ""),
+            "next_review_date": favorite.get("next_review_date"),
+            "linked_report_ids": favorite.get("linked_report_ids", []) or [],
+            "message_alert_enabled": bool(favorite.get("message_alert_enabled", False)),
             # 行情占位，稍后填充
             "current_price": None,
             "change_percent": None,
@@ -160,7 +181,14 @@ class FavoritesService:
         tags: List[str] = None,
         notes: str = "",
         alert_price_high: Optional[float] = None,
-        alert_price_low: Optional[float] = None
+        alert_price_low: Optional[float] = None,
+        watch_reason: str = "",
+        target_price_low: Optional[float] = None,
+        target_price_high: Optional[float] = None,
+        risk_reminder: str = "",
+        next_review_date: Optional[str] = None,
+        linked_report_ids: Optional[List[str]] = None,
+        message_alert_enabled: bool = False,
     ) -> bool:
         """添加股票到自选股（兼容字符串ID与ObjectId）"""
         import logging
@@ -180,7 +208,14 @@ class FavoritesService:
                 "tags": tags or [],
                 "notes": notes,
                 "alert_price_high": alert_price_high,
-                "alert_price_low": alert_price_low
+                "alert_price_low": alert_price_low,
+                "watch_reason": watch_reason,
+                "target_price_low": target_price_low,
+                "target_price_high": target_price_high,
+                "risk_reminder": risk_reminder,
+                "next_review_date": next_review_date,
+                "linked_report_ids": linked_report_ids or [],
+                "message_alert_enabled": message_alert_enabled,
             }
 
             logger.info(f"🔧 [add_favorite] 自选股数据构建完成: {favorite_stock}")
@@ -264,10 +299,7 @@ class FavoritesService:
         self,
         user_id: str,
         stock_code: str,
-        tags: Optional[List[str]] = None,
-        notes: Optional[str] = None,
-        alert_price_high: Optional[float] = None,
-        alert_price_low: Optional[float] = None
+        **fields: Any,
     ) -> bool:
         """更新自选股信息（兼容字符串ID与ObjectId）"""
         db = await self._get_db()
@@ -276,14 +308,10 @@ class FavoritesService:
         is_oid = self._is_valid_object_id(user_id)
         prefix = "favorite_stocks.$." if is_oid else "favorites.$."
         update_fields: Dict[str, Any] = {}
-        if tags is not None:
-            update_fields[prefix + "tags"] = tags
-        if notes is not None:
-            update_fields[prefix + "notes"] = notes
-        if alert_price_high is not None:
-            update_fields[prefix + "alert_price_high"] = alert_price_high
-        if alert_price_low is not None:
-            update_fields[prefix + "alert_price_low"] = alert_price_low
+        for key, value in fields.items():
+            if key not in self.UPDATE_FIELDS:
+                continue
+            update_fields[prefix + key] = self._sanitize_update_value(key, value)
 
         if not update_fields:
             return True
@@ -311,6 +339,15 @@ class FavoritesService:
                 }
             )
             return result.modified_count > 0
+
+    def _sanitize_update_value(self, key: str, value: Any) -> Any:
+        if key in {"tags", "linked_report_ids"}:
+            return value or []
+        if key in {"notes", "watch_reason", "risk_reminder"}:
+            return value or ""
+        if key == "message_alert_enabled":
+            return bool(value)
+        return value
 
     async def is_favorite(self, user_id: str, stock_code: str) -> bool:
         """检查股票是否在自选股中（兼容字符串ID与ObjectId）"""

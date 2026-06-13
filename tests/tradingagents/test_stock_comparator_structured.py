@@ -20,6 +20,8 @@ models_pkg.__path__ = []
 industry_models_stub = types.ModuleType("app.models.industry_analysis")
 for name in (
     "DetailLevel",
+    "DiscoveryInsightItem",
+    "IndustryDiscoveryInsights",
     "IndustryLogicSections",
     "IndustryAnalysisResult",
     "RecommendationGroup",
@@ -120,6 +122,15 @@ class StockComparatorStructuredTests(unittest.TestCase):
       "stocks": [{"code": "000001", "name": "平安银行", "score": 88, "recommendation_logic": "分红稳定"}]
     }
   ],
+  "discovery_insights": {
+    "industry_bottlenecks": [
+      {"title": "息差瓶颈", "summary": "息差下行压制利润", "evidence": "行业净息差承压", "tracking_signal": "净息差", "expected_timing": "季度财报", "severity": "high", "related_stocks": [{"code": "000001", "name": "平安银行"}]}
+    ],
+    "non_consensus_targets": [],
+    "financial_inflections": [],
+    "red_team_counterpoints": [],
+    "future_catalysts": []
+  },
   "recommendations": [
     {"rank": 1, "code": "000001", "name": "平安银行", "industry": "银行", "score": 88, "summary": "分红稳定"}
   ]
@@ -137,6 +148,8 @@ class StockComparatorStructuredTests(unittest.TestCase):
         self.assertEqual(result.supply_chain_analysis[0].related_stocks[0].code, "000001")
         self.assertEqual(len(result.recommendation_groups), 1)
         self.assertEqual(result.recommendation_groups[0].stocks[0].name, "平安银行")
+        self.assertEqual(result.discovery_insights.industry_bottlenecks[0].title, "息差瓶颈")
+        self.assertEqual(result.discovery_insights.industry_bottlenecks[0].related_stocks[0].code, "000001")
         self.assertEqual(result.recommendations[0].score, 88)
 
     def test_select_stocks_removes_structured_json_from_user_report(self):
@@ -148,6 +161,7 @@ report body
 {
   "industry_logic_sections": {"supply_chain": "chain"},
   "stock_selection_sections": {"leaders": "leader"},
+  "discovery_insights": {"future_catalysts": [{"title": "订单催化", "summary": "订单落地"}]},
   "recommendations": [
     {"rank": 1, "code": "000001", "name": "Ping An", "score": 88, "summary": "stable"}
   ]

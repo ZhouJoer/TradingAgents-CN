@@ -20,6 +20,8 @@ else:
 try:
     from app.models.industry_analysis import (
         DetailLevel,
+        DiscoveryInsightItem,
+        IndustryDiscoveryInsights,
         IndustryLogicSections,
         IndustryAnalysisResult,
         RecommendationGroup,
@@ -36,6 +38,8 @@ except Exception:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     DetailLevel = module.DetailLevel
+    DiscoveryInsightItem = module.DiscoveryInsightItem
+    IndustryDiscoveryInsights = module.IndustryDiscoveryInsights
     IndustryLogicSections = module.IndustryLogicSections
     IndustryAnalysisResult = module.IndustryAnalysisResult
     RecommendationGroup = module.RecommendationGroup
@@ -72,6 +76,7 @@ class TwoStageResult:
     stock_selection_sections: Optional[StockSelectionSections] = None
     supply_chain_analysis: List[SupplyChainSegment] = field(default_factory=list)
     recommendation_groups: List[RecommendationGroup] = field(default_factory=list)
+    discovery_insights: IndustryDiscoveryInsights = field(default_factory=IndustryDiscoveryInsights)
     llm_calls: int = 0
 
 
@@ -148,6 +153,7 @@ class StockComparator:
                 data_date=data_date,
                 industry_logic_sections=self._build_industry_logic_sections(""),
                 stock_selection_sections=self._build_stock_selection_sections(""),
+                discovery_insights=IndustryDiscoveryInsights(),
             )
 
         # Two-stage approach
@@ -174,6 +180,7 @@ class StockComparator:
             stock_selection_sections=two_stage.stock_selection_sections,
             supply_chain_analysis=two_stage.supply_chain_analysis,
             recommendation_groups=two_stage.recommendation_groups,
+            discovery_insights=two_stage.discovery_insights,
             analysis_time=round(time.perf_counter() - start_time, 4),
             llm_calls=2,
             data_date=data_date,
@@ -312,6 +319,12 @@ class StockComparator:
             result.industry_logic_sections = self._build_industry_logic_sections(due_diligence_report)
         if result.stock_selection_sections is None:
             result.stock_selection_sections = self._build_stock_selection_sections(stock_selection_report)
+        if not self._has_discovery_insights(result.discovery_insights):
+            result.discovery_insights = self._build_discovery_insights(
+                due_diligence_report=due_diligence_report,
+                stock_selection_report=stock_selection_report,
+                recommendations=result.recommendations,
+            )
 
     def _apply_structured_payload(
         self,
@@ -331,6 +344,9 @@ class StockComparator:
         )
         result.recommendation_groups = self._parse_recommendation_groups(
             payload.get("recommendation_groups"), candidates
+        )
+        result.discovery_insights = self._parse_discovery_insights(
+            payload.get("discovery_insights"), candidates
         )
 
         structured_recommendations = self._parse_recommendation_list(
@@ -407,6 +423,50 @@ class StockComparator:
             ))
         return groups
 
+    def _parse_discovery_insights(
+        self,
+        value: Any,
+        candidates: List[StockCandidate],
+    ) -> IndustryDiscoveryInsights:
+        if not isinstance(value, dict):
+            return IndustryDiscoveryInsights()
+
+        return IndustryDiscoveryInsights(
+            industry_bottlenecks=self._parse_discovery_items(value.get("industry_bottlenecks"), candidates),
+            non_consensus_targets=self._parse_discovery_items(value.get("non_consensus_targets"), candidates),
+            financial_inflections=self._parse_discovery_items(value.get("financial_inflections"), candidates),
+            red_team_counterpoints=self._parse_discovery_items(value.get("red_team_counterpoints"), candidates),
+            future_catalysts=self._parse_discovery_items(value.get("future_catalysts"), candidates),
+        )
+
+    def _parse_discovery_items(
+        self,
+        value: Any,
+        candidates: List[StockCandidate],
+    ) -> List[DiscoveryInsightItem]:
+        if not isinstance(value, list):
+            return []
+
+        items: List[DiscoveryInsightItem] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            related_stocks = self._parse_recommendation_list(
+                item.get("related_stocks") or item.get("stocks"),
+                candidates,
+                10,
+            )
+            items.append(DiscoveryInsightItem(
+                title=self._clean_text(item.get("title")),
+                summary=self._clean_text(item.get("summary") or item.get("description")),
+                evidence=self._clean_text(item.get("evidence") or item.get("basis")),
+                tracking_signal=self._clean_text(item.get("tracking_signal") or item.get("tracking")),
+                expected_timing=self._clean_text(item.get("expected_timing") or item.get("timing")),
+                severity=self._normalize_severity(item.get("severity")),
+                related_stocks=related_stocks,
+            ))
+        return items
+
     def _parse_recommendation_list(
         self,
         value: Any,
@@ -479,6 +539,80 @@ class StockComparator:
             high_risk=self._find_section(sections, ["未入选/剔除原因", "风险"]),
             watchlist=self._find_section(sections, ["最终结论", "跟踪指标"]),
         )
+
+    def _build_discovery_insights(
+        self,
+        due_diligence_report: str,
+        stock_selection_report: str,
+        recommendations: List[StockRecommendation],
+    ) -> IndustryDiscoveryInsights:
+        dd_sections = self._extract_markdown_sections(due_diligence_report or "")
+        selection_sections = self._extract_markdown_sections(stock_selection_report or "")
+
+        return IndustryDiscoveryInsights(
+            industry_bottlenecks=self._build_discovery_category(
+                title="产业瓶颈",
+                sections=dd_sections,
+                section_names=["产业链拆解", "经济性公式", "风险矩阵"],
+                tracking_hint="跟踪产能、关键成本、订单兑现和价格竞争变化。",
+            ),
+            non_consensus_targets=self._build_discovery_category(
+                title="非共识标的",
+                sections=selection_sections,
+                section_names=["未入选/剔除原因", "观察名单", "组合建议"],
+                tracking_hint="跟踪是否出现业绩、订单或估值修复信号。",
+                related_stocks=recommendations,
+            ),
+            financial_inflections=self._build_discovery_category(
+                title="财务拐点",
+                sections=selection_sections,
+                section_names=["股票多维评分", "最终结论", "跟踪指标"],
+                tracking_hint="跟踪营收增速、利润率、现金流和负债率的边际变化。",
+            ),
+            red_team_counterpoints=self._build_discovery_category(
+                title="红队反证",
+                sections={**dd_sections, **selection_sections},
+                section_names=["风险矩阵", "风险", "主要风险", "未入选/剔除原因"],
+                tracking_hint="跟踪能推翻核心逻辑的政策、需求、价格和财务证据。",
+                severity="high",
+            ),
+            future_catalysts=self._build_discovery_category(
+                title="未来催化事件",
+                sections=dd_sections,
+                section_names=["政策与周期判断", "真实项目/订单验证", "需求端验证"],
+                tracking_hint="跟踪政策落地、订单招标、中标公告、产能投放和客户导入。",
+            ),
+        )
+
+    def _build_discovery_category(
+        self,
+        title: str,
+        sections: Dict[str, str],
+        section_names: List[str],
+        tracking_hint: str,
+        related_stocks: Optional[List[StockRecommendation]] = None,
+        severity: str = "medium",
+    ) -> List[DiscoveryInsightItem]:
+        content = self._find_section(sections, section_names)
+        if not content:
+            return []
+        return [DiscoveryInsightItem(
+            title=f"从报告提取：{title}",
+            summary=self._compact_text(content, 220),
+            evidence=f"来源章节：{section_names[0]}",
+            tracking_signal=tracking_hint,
+            severity=severity,
+            related_stocks=(related_stocks or [])[:5],
+        )]
+
+    def _has_discovery_insights(self, value: IndustryDiscoveryInsights) -> bool:
+        return any((
+            value.industry_bottlenecks,
+            value.non_consensus_targets,
+            value.financial_inflections,
+            value.red_team_counterpoints,
+            value.future_catalysts,
+        ))
 
     def _extract_markdown_sections(self, text: str) -> Dict[str, str]:
         """Split Markdown text into sections by headers."""
@@ -805,6 +939,18 @@ class StockComparator:
         if value is None:
             return ""
         return str(value).strip()
+
+    def _compact_text(self, value: str, limit: int) -> str:
+        text = re.sub(r"\s+", " ", value or "").strip()
+        if len(text) <= limit:
+            return text
+        return text[:limit].rstrip() + "..."
+
+    def _normalize_severity(self, value: Any) -> str:
+        normalized = str(value or "medium").strip().lower()
+        if normalized in {"high", "medium", "low"}:
+            return normalized
+        return "medium"
 
     def _format_value(self, value: Any) -> str:
         if value is None:

@@ -145,7 +145,17 @@ STOCK_SELECTION_PROMPT_TEMPLATE = dedent(
     - 说明哪类公司不宜过度集中，哪些风险暴露不应重仓叠加。
     - 必须输出表格：组合风格｜适合纳入的类型｜配置思路｜主要风险｜不宜超配的方向
 
-    # 八、最终结论
+    # 八、主题发现清单
+    - 目标不是简单重复Top 5，而是帮助用户从主题中发现可持续跟踪的候选方向。
+    - 必须分别输出以下五类内容，每类优先用表格：
+      - 产业瓶颈：哪些环节可能成为供给、成本、产能、技术或渠道瓶颈。
+      - 非共识标的：哪些候选股或类型可能不在主流叙事中心，但值得建立观察。
+      - 财务拐点：哪些指标可能出现边际改善或恶化，如何验证。
+      - 红队反证：哪些事实一旦出现，会推翻当前主题逻辑或个股逻辑。
+      - 未来催化事件：未来政策、订单、财报、产品、价格、产能等可能催化。
+    - 表格建议字段：发现类型｜标题｜相关股票/类型｜依据｜跟踪信号｜观察窗口｜风险等级
+
+    # 九、最终结论
     - 再次明确Top 5最终排序。
     - 逐一概括每只股票的核心逻辑。
     - 指出本次选股最大的系统性风险与最重要的跟踪指标。
@@ -200,6 +210,23 @@ STOCK_SELECTION_PROMPT_TEMPLATE = dedent(
         {{"group_key": "high_risk_high_volatility", "group_name": "高风险高波动", "description": "", "suitable_style": "", "main_risks": "", "stocks": []}},
         {{"group_key": "watchlist", "group_name": "观察名单", "description": "", "suitable_style": "", "main_risks": "", "stocks": []}}
       ],
+      "discovery_insights": {{
+        "industry_bottlenecks": [
+          {{"title": "瓶颈标题", "summary": "为什么是瓶颈", "evidence": "依据或验证线索", "tracking_signal": "后续跟踪指标", "expected_timing": "观察窗口", "severity": "high | medium | low", "related_stocks": [{{"code": "000000", "name": "股票名称", "summary": "关联原因"}}]}}
+        ],
+        "non_consensus_targets": [
+          {{"title": "非共识方向或标的", "summary": "为什么不在主流叙事但值得观察", "evidence": "依据", "tracking_signal": "确认/证伪信号", "expected_timing": "观察窗口", "severity": "medium", "related_stocks": []}}
+        ],
+        "financial_inflections": [
+          {{"title": "财务拐点", "summary": "可能改善或恶化的财务变量", "evidence": "依据", "tracking_signal": "财报或经营指标", "expected_timing": "观察窗口", "severity": "medium", "related_stocks": []}}
+        ],
+        "red_team_counterpoints": [
+          {{"title": "关键反证", "summary": "能推翻主题/个股逻辑的事实", "evidence": "反证依据", "tracking_signal": "预警信号", "expected_timing": "观察窗口", "severity": "high", "related_stocks": []}}
+        ],
+        "future_catalysts": [
+          {{"title": "未来催化", "summary": "可能触发重估或验证逻辑的事件", "evidence": "依据", "tracking_signal": "事件跟踪方式", "expected_timing": "时间窗口", "severity": "medium", "related_stocks": []}}
+        ]
+      }},
       "recommendations": [
         {{"rank": 1, "code": "000000", "name": "股票名称", "industry": "行业", "score": 0, "summary": "摘要", "recommendation_logic": "推荐逻辑", "main_advantages": "主要优势", "main_risks": "主要风险", "suitable_style": "适合风格", "supply_chain_position": "产业链位置", "score_breakdown": {{}}}}
       ]

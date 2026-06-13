@@ -190,6 +190,26 @@ class RecommendationGroup(BaseModel):
     stocks: List[StockRecommendation] = Field(default_factory=list, description="股票列表")
 
 
+class DiscoveryInsightItem(BaseModel):
+    """主题发现洞察项"""
+    title: str = Field("", description="洞察标题")
+    summary: str = Field("", description="洞察摘要")
+    evidence: str = Field("", description="依据或验证线索")
+    tracking_signal: str = Field("", description="后续跟踪信号")
+    expected_timing: str = Field("", description="可能触发时间或观察窗口")
+    severity: str = Field("medium", description="重要性：high/medium/low")
+    related_stocks: List[StockRecommendation] = Field(default_factory=list, description="关联候选股")
+
+
+class IndustryDiscoveryInsights(BaseModel):
+    """行业/主题发现增强信息"""
+    industry_bottlenecks: List[DiscoveryInsightItem] = Field(default_factory=list, description="产业瓶颈")
+    non_consensus_targets: List[DiscoveryInsightItem] = Field(default_factory=list, description="非共识标的")
+    financial_inflections: List[DiscoveryInsightItem] = Field(default_factory=list, description="财务拐点")
+    red_team_counterpoints: List[DiscoveryInsightItem] = Field(default_factory=list, description="红队反证")
+    future_catalysts: List[DiscoveryInsightItem] = Field(default_factory=list, description="未来催化事件")
+
+
 class IndustryAnalysisResult(BaseModel):
     """行业分析最终结果"""
     concept: str = Field(..., description="分析的概念/行业")
@@ -219,6 +239,7 @@ class IndustryAnalysisResult(BaseModel):
     stock_selection_sections: Optional[StockSelectionSections] = Field(None, description="选股逻辑结构化分层")
     supply_chain_analysis: List[SupplyChainSegment] = Field(default_factory=list, description="产业链环节分析")
     recommendation_groups: List[RecommendationGroup] = Field(default_factory=list, description="分组推荐")
+    discovery_insights: IndustryDiscoveryInsights = Field(default_factory=IndustryDiscoveryInsights, description="主题发现洞察")
     # 元信息
     analysis_time: float = Field(0.0, description="分析耗时(秒)")
     llm_calls: int = Field(0, description="LLM调用次数")

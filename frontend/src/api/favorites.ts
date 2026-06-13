@@ -12,6 +12,13 @@ export interface FavoriteItem {
   notes?: string
   alert_price_high?: number | null
   alert_price_low?: number | null
+  watch_reason?: string
+  target_price_low?: number | null
+  target_price_high?: number | null
+  risk_reminder?: string
+  next_review_date?: string | null
+  linked_report_ids?: string[]
+  message_alert_enabled?: boolean
   current_price?: number | null
   change_percent?: number | null
   volume?: number | null
@@ -26,6 +33,13 @@ export interface AddFavoriteReq {
   notes?: string
   alert_price_high?: number | null
   alert_price_low?: number | null
+  watch_reason?: string
+  target_price_low?: number | null
+  target_price_high?: number | null
+  risk_reminder?: string
+  next_review_date?: string | null
+  linked_report_ids?: string[]
+  message_alert_enabled?: boolean
 }
 
 export const favoritesApi = {
@@ -45,7 +59,7 @@ export const favoritesApi = {
    * @param symbol 股票代码（6位）
    * @param payload 更新内容
    */
-  update: (symbol: string, payload: Partial<Pick<FavoriteItem, 'tags' | 'notes' | 'alert_price_high' | 'alert_price_low'>>) =>
+  update: (symbol: string, payload: Partial<Pick<FavoriteItem, 'tags' | 'notes' | 'alert_price_high' | 'alert_price_low' | 'watch_reason' | 'target_price_low' | 'target_price_high' | 'risk_reminder' | 'next_review_date' | 'linked_report_ids' | 'message_alert_enabled'>>) =>
     ApiClient.put<{ message: string; symbol?: string; stock_code?: string }>(`/api/favorites/${symbol}`, payload),
 
   /**
@@ -79,4 +93,3 @@ export const favoritesApi = {
       message: string
     }>('/api/favorites/sync-realtime', { data_source })
 }
-
