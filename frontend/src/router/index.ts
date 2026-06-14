@@ -364,6 +364,28 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/backtest',
+    name: 'BacktestLab',
+    component: () => import('@/layouts/BasicLayout.vue'),
+    meta: {
+      title: '策略回测',
+      icon: 'TrendCharts',
+      requiresAuth: true,
+      transition: 'slide-up'
+    },
+    children: [
+      {
+        path: '',
+        name: 'BacktestLabHome',
+        component: () => import('@/views/Backtest/Lab.vue'),
+        meta: {
+          title: '策略回测',
+          requiresAuth: true
+        }
+      }
+    ]
+  },
+  {
     path: '/paper',
     name: 'PaperTrading',
     component: () => import('@/layouts/BasicLayout.vue'),

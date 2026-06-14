@@ -43,6 +43,11 @@
       <template #title>我的自选股</template>
     </el-menu-item>
 
+    <el-menu-item index="/backtest">
+      <el-icon><TrendCharts /></el-icon>
+      <template #title>策略回测</template>
+    </el-menu-item>
+
     <el-menu-item index="/paper">
       <el-icon><CreditCard /></el-icon>
       <template #title>模拟交易</template>
