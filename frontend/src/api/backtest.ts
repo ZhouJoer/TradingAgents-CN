@@ -120,6 +120,7 @@ export interface MiningRun {
   message: string
   trial_count?: number
   candidate_count?: number
+  split_plan?: Record<string, any>
   trials?: MiningTrial[]
   candidates?: MiningCandidate[]
 }
@@ -136,6 +137,8 @@ export interface MiningTrial {
   validation_metrics: BacktestMetrics
   test_metrics: BacktestMetrics
   stress_2x_metrics: BacktestMetrics
+  walk_forward_slices?: Array<{ label: string; train: Record<string, string>; validation: Record<string, string>; test: Record<string, string>; metrics: BacktestMetrics }>
+  walk_forward_summary?: Record<string, number>
 }
 
 export interface MiningCandidate {
@@ -144,6 +147,7 @@ export interface MiningCandidate {
   params: Record<string, any>
   score: number
   metrics: BacktestMetrics
+  evaluation?: Record<string, any>
 }
 
 export const backtestApi = {

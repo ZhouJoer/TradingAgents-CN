@@ -342,6 +342,32 @@ def test_rotation_buys_positive_momentum_and_charges_commission() -> None:
     assert all(isclose(trade["commission"], trade["amount"] * 0.0005, rel_tol=1e-4) for trade in buy_trades)
 
 
+def test_adaptive_regime_uses_defensive_asset_in_downtrend() -> None:
+    engine = BacktestEngine()
+    records_by_code = {
+        "510300": _records([120 - i * 0.12 for i in range(520)], start="2020-01-01"),
+        "518880": _records([80 + i * 0.08 for i in range(520)], start="2020-01-01"),
+    }
+
+    result = engine.run(
+        records_by_code,
+        BacktestConfig(
+            strategy_id="adaptive_regime_rotation",
+            start_date="2021-01-01",
+            end_date="2021-12-31",
+            universe=["510300", "518880"],
+            params=strategy_default_params("adaptive_regime_rotation"),
+        ),
+    )
+
+    buy_codes = {trade["code"] for trade in result["trades"] if trade["side"] == "buy"}
+    signal_reasons = {signal["reason"] for signal in result["signals"]}
+
+    assert "518880" in buy_codes
+    assert "510300" not in buy_codes
+    assert "regime_downtrend_defensive" in signal_reasons
+
+
 def test_missing_early_prices_do_not_pollute_equity_or_trades() -> None:
     engine = BacktestEngine()
     records_by_code = {

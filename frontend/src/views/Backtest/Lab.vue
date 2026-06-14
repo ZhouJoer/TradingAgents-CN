@@ -283,6 +283,7 @@
         <section v-if="miningRun" class="mine-status">
           <el-progress :percentage="Number(miningRun.progress || 0)" :status="miningRun.status === 'failed' ? 'exception' : miningRun.status === 'completed' ? 'success' : undefined" />
           <span>{{ miningRun.status }} · {{ miningRun.message }}</span>
+          <span v-if="walkForwardCount" class="muted">Walk-forward {{ walkForwardCount }} 段</span>
         </section>
 
         <section v-if="miningTrials.length" class="result-grid">
@@ -310,6 +311,12 @@
               </el-table-column>
               <el-table-column label="Calmar" width="90">
                 <template #default="{ row }">{{ num(row.test_metrics?.calmar) }}</template>
+              </el-table-column>
+              <el-table-column label="WF正收益" width="92">
+                <template #default="{ row }">{{ pct(row.walk_forward_summary?.positive_ratio) }}</template>
+              </el-table-column>
+              <el-table-column label="WF超额" width="82">
+                <template #default="{ row }">{{ pct(row.walk_forward_summary?.beat_benchmark_ratio) }}</template>
               </el-table-column>
               <el-table-column label="通过" width="72">
                 <template #default="{ row }">
@@ -355,6 +362,7 @@ const compareResults = ref<BacktestResult[]>([])
 const stabilityResult = ref<EntryOffsetStabilityResult | null>(null)
 const miningRun = ref<MiningRun | null>(null)
 const miningTrials = computed<MiningTrial[]>(() => miningRun.value?.trials || [])
+const walkForwardCount = computed(() => Array.isArray(miningRun.value?.split_plan?.walk_forward) ? miningRun.value.split_plan.walk_forward.length : 0)
 const loading = reactive({ single: false, compare: false, stability: false, mine: false })
 const pollTimer = ref<number | null>(null)
 const savingCandidate = ref<string | null>(null)
@@ -552,7 +560,16 @@ async function saveTrial(row: MiningTrial) {
       run_id: miningRun.value?.run_id,
       trial_index: row.trial_index || row.rank,
       score: row.score,
-      metrics: row.test_metrics
+      metrics: row.test_metrics,
+      evaluation: {
+        train_metrics: row.train_metrics,
+        validation_metrics: row.validation_metrics,
+        test_metrics: row.test_metrics,
+        stress_2x_metrics: row.stress_2x_metrics,
+        walk_forward_summary: row.walk_forward_summary || {},
+        walk_forward_slices: row.walk_forward_slices || [],
+        reasons: row.reasons || []
+      }
     })
     if (res.success) ElMessage.success('已保存候选策略配置')
   } catch (error: any) {
@@ -629,7 +646,22 @@ const fallbackParamLabels: Record<string, string> = {
   z_window: '标准分窗口',
   z_threshold: '标准分阈值',
   ma: '确认均线',
-  segment: '分段长度'
+  segment: '分段长度',
+  regime_fast_ma: '状态快均线',
+  regime_slow_ma: '状态慢均线',
+  regime_momentum_window: '状态动量窗口',
+  regime_up_threshold: '上涨阈值',
+  regime_down_threshold: '下跌阈值',
+  top_k_uptrend: '上涨持仓数',
+  top_k_range: '震荡持仓数',
+  top_k_downtrend: '下跌防守持仓数',
+  range_window: '震荡动量窗口',
+  range_ma: '震荡均线',
+  range_vol_window: '震荡波动窗口',
+  range_vol_penalty: '震荡波动惩罚',
+  defensive_codes: '防守资产池',
+  defensive_window: '防守动量窗口',
+  defensive_ma: '防守均线'
 }
 
 function familyLabel(value?: string) {
@@ -638,7 +670,8 @@ function familyLabel(value?: string) {
     trend: '趋势',
     breakout: '突破',
     timing: '择时',
-    chan: '缠论'
+    chan: '缠论',
+    adaptive: '自适应'
   }
   return labels[value || ''] || value || '-'
 }
@@ -673,7 +706,13 @@ function reasonLabel(value?: string) {
     warmup: '指标预热',
     no_eligible_asset: '无合格标的',
     no_chan_fractal_setup: '无分型机会',
-    no_center_breakout: '无中枢突破'
+    no_center_breakout: '无中枢突破',
+    regime_uptrend: '上涨状态',
+    regime_uptrend_no_asset: '上涨状态无合格标的',
+    regime_range: '震荡状态',
+    regime_range_no_asset: '震荡状态无合格标的',
+    regime_downtrend_defensive: '下跌状态防守',
+    regime_downtrend_cash: '下跌状态空仓'
   }
   return labels[value || ''] || value || '-'
 }
@@ -1030,6 +1069,12 @@ onUnmounted(stopPolling)
 
   .el-progress {
     flex: 1;
+  }
+
+  .muted {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    white-space: nowrap;
   }
 }
 

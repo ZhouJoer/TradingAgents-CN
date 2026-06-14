@@ -44,6 +44,8 @@ DEFAULT_ROTATION_UNIVERSE: List[Dict[str, str]] = [
     item for item in DEFAULT_ETF_UNIVERSE if item.get("group") != "cash_watch"
 ]
 
+DEFAULT_DEFENSIVE_UNIVERSE = ("518880", "512890", "515100", "515300", "563020")
+
 
 @dataclass
 class BacktestConfig:
@@ -120,6 +122,7 @@ def _signal_from_scores(
     eligible: pd.Series,
     top_k: int,
     empty_reason: str = "no_eligible_asset",
+    selected_reason: str = "selected",
 ) -> StrategySignal:
     eligible_scores = scores[eligible].replace([np.inf, -np.inf], np.nan).dropna()
     weights = _top_equal(eligible_scores.to_dict(), top_k)
@@ -127,7 +130,7 @@ def _signal_from_scores(
         weights=weights,
         scores=_score_dict(scores),
         eligible=[str(code) for code in eligible_scores.index.tolist()],
-        reason="selected" if weights else empty_reason,
+        reason=selected_reason if weights else empty_reason,
     )
 
 
@@ -205,6 +208,25 @@ def _vol(returns: pd.DataFrame, window: int) -> pd.DataFrame:
     return returns.rolling(window=window, min_periods=max(5, window // 2)).std() * sqrt(252)
 
 
+def _multi_window_score(
+    ctx: StrategyContext,
+    idx: int,
+    windows: Iterable[int],
+    weights: Iterable[float],
+) -> pd.Series:
+    score = pd.Series(0.0, index=ctx.close.columns)
+    for window, weight in zip(windows, weights):
+        score = score.add(_ret(ctx.close, idx, int(window)) * float(weight), fill_value=0)
+    return score
+
+
+def _market_regime_series(ctx: StrategyContext) -> pd.Series:
+    if "510300" in ctx.close.columns:
+        return ctx.close["510300"]
+    equal_returns = ctx.returns.mean(axis=1).fillna(0)
+    return (1 + equal_returns).cumprod()
+
+
 def _rebalance_dates(index: pd.DatetimeIndex, frequency: str) -> List[pd.Timestamp]:
     if len(index) < 2:
         return []
@@ -228,9 +250,7 @@ def _momentum_enhanced(ctx: StrategyContext, date: pd.Timestamp, params: Dict[st
     trend_fast_ma = int(params.get("trend_fast_ma", 0) or 0)
     vol_window = int(params.get("vol_window", 60))
 
-    score = pd.Series(0.0, index=ctx.close.columns)
-    for window, weight in zip(windows, weights):
-        score = score.add(_ret(ctx.close, idx, int(window)) * float(weight), fill_value=0)
+    score = _multi_window_score(ctx, idx, windows, weights)
     volatility = _vol(ctx.returns, vol_window).iloc[idx]
     score = score - float(params.get("vol_penalty", 0.08)) * volatility
 
@@ -305,6 +325,80 @@ def _trend_following_equal_weight(ctx: StrategyContext, date: pd.Timestamp, para
     else:
         eligible = (ctx.close.iloc[idx] > ma_slow) & (ma_fast > ma_slow) & (ret > 0)
     return _signal_from_scores(ret, eligible, top_k)
+
+
+def _adaptive_regime_rotation(ctx: StrategyContext, date: pd.Timestamp, params: Dict[str, Any]) -> StrategySignal:
+    idx = ctx.close.index.get_loc(date)
+    regime_fast_ma = int(params.get("regime_fast_ma", 20))
+    regime_slow_ma = int(params.get("regime_slow_ma", 120))
+    regime_window = int(params.get("regime_momentum_window", 60))
+    if idx < max(regime_slow_ma, regime_window):
+        return _empty_signal("warmup")
+
+    market = _market_regime_series(ctx)
+    market_now = _clean_float(market.iloc[idx])
+    market_prev = _clean_float(market.iloc[idx - regime_window])
+    fast_ma = _clean_float(market.rolling(regime_fast_ma, min_periods=regime_fast_ma).mean().iloc[idx])
+    slow_ma = _clean_float(market.rolling(regime_slow_ma, min_periods=regime_slow_ma).mean().iloc[idx])
+    if market_now is None or market_prev is None or market_prev <= 0 or fast_ma is None or slow_ma is None:
+        return _empty_signal("warmup")
+
+    market_ret = market_now / market_prev - 1
+    up_threshold = float(params.get("regime_up_threshold", 0.02))
+    down_threshold = float(params.get("regime_down_threshold", -0.02))
+    uptrend = market_now > slow_ma and fast_ma > slow_ma and market_ret > up_threshold
+    downtrend = market_now < slow_ma and fast_ma < slow_ma and market_ret < down_threshold
+
+    trend_ma = int(params.get("trend_ma", 120))
+    trend_fast_ma = int(params.get("trend_fast_ma", 20))
+    vol_window = int(params.get("vol_window", 60))
+    volatility = _vol(ctx.returns, vol_window).iloc[idx]
+
+    if uptrend:
+        windows = params.get("momentum_windows", [40, 120, 250])
+        weights = params.get("momentum_weights", [0.3, 0.5, 0.2])
+        score = _multi_window_score(ctx, idx, windows, weights) - float(params.get("vol_penalty", 0.03)) * volatility
+        ret = _ret(ctx.close, idx, int(params.get("absolute_window", 60)))
+        eligible = _empty_rule_mask(ctx, idx, "trend_filter", score, ret, trend_ma, trend_fast_ma)
+        return _signal_from_scores(
+            score,
+            eligible,
+            int(params.get("top_k_uptrend", params.get("top_k", 1))),
+            empty_reason="regime_uptrend_no_asset",
+            selected_reason="regime_uptrend",
+        )
+
+    if downtrend:
+        defensive_codes = {str(code).zfill(6) for code in params.get("defensive_codes", DEFAULT_DEFENSIVE_UNIVERSE)}
+        defensive_window = int(params.get("defensive_window", 60))
+        ret = _ret(ctx.close, idx, defensive_window)
+        defensive_vol = _vol(ctx.returns, defensive_window).iloc[idx].replace(0, np.nan)
+        score = ret / defensive_vol
+        defensive_mask = pd.Series([code in defensive_codes for code in ctx.close.columns], index=ctx.close.columns)
+        defensive_ma = _ma(ctx.close, int(params.get("defensive_ma", 120))).iloc[idx]
+        eligible = defensive_mask & (ret > 0) & (ctx.close.iloc[idx] > defensive_ma)
+        return _signal_from_scores(
+            score,
+            eligible,
+            int(params.get("top_k_downtrend", 1)),
+            empty_reason="regime_downtrend_cash",
+            selected_reason="regime_downtrend_defensive",
+        )
+
+    range_window = int(params.get("range_window", 40))
+    range_ma_window = int(params.get("range_ma", 60))
+    ret = _ret(ctx.close, idx, range_window)
+    range_vol = _vol(ctx.returns, int(params.get("range_vol_window", 20))).iloc[idx].replace(0, np.nan)
+    score = ret / range_vol - float(params.get("range_vol_penalty", 0.02)) * range_vol
+    range_ma = _ma(ctx.close, range_ma_window).iloc[idx]
+    eligible = (ret > 0) & (ctx.close.iloc[idx] > range_ma)
+    return _signal_from_scores(
+        score,
+        eligible,
+        int(params.get("top_k_range", 2)),
+        empty_reason="regime_range_no_asset",
+        selected_reason="regime_range",
+    )
 
 
 def _donchian_breakout_rotation(ctx: StrategyContext, date: pd.Timestamp, params: Dict[str, Any]) -> StrategySignal:
@@ -417,6 +511,7 @@ STRATEGIES: Dict[str, StrategyFn] = {
     "vol_adjusted_momentum": _vol_adjusted_momentum,
     "dual_momentum_core": _dual_momentum_core,
     "trend_following_equal_weight": _trend_following_equal_weight,
+    "adaptive_regime_rotation": _adaptive_regime_rotation,
     "donchian_breakout_rotation": _donchian_breakout_rotation,
     "rsrs_timing_rotation": _rsrs_timing_rotation,
     "chan_fractal_rotation": _chan_fractal_rotation,

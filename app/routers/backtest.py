@@ -73,6 +73,12 @@ class MiningRequest(BaseModel):
     adjust: str = Field(default="qfq", pattern="^(qfq|hfq|none)$")
     objective: str = "sample_out_calmar"
     constraints: Dict[str, Any] = Field(default_factory=dict)
+    walk_forward: bool = True
+    walk_forward_train_days: int = Field(default=504, ge=90, le=1500)
+    walk_forward_validation_days: int = Field(default=126, ge=30, le=500)
+    walk_forward_test_days: int = Field(default=126, ge=30, le=500)
+    walk_forward_step_days: int = Field(default=126, ge=30, le=500)
+    max_walk_forward_slices: int = Field(default=4, ge=0, le=12)
 
 
 class SaveCandidateRequest(BaseModel):
@@ -83,6 +89,7 @@ class SaveCandidateRequest(BaseModel):
     trial_index: Optional[int] = None
     score: Optional[float] = None
     metrics: Dict[str, Any] = Field(default_factory=dict)
+    evaluation: Dict[str, Any] = Field(default_factory=dict)
 
 
 def _service() -> BacktestService:
