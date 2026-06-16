@@ -15,9 +15,9 @@ from .strategy_catalog import STRATEGY_TEMPLATES
 
 
 DEFAULT_SEARCH_SPACE: Dict[str, List[Any]] = {
-    "momentum_window": [20, 40, 60, 120, 250],
-    "absolute_window": [20, 40, 60, 120],
-    "trend_fast_ma": [0, 20, 40, 60],
+    "momentum_window": [10, 20, 40, 60, 120, 250],
+    "absolute_window": [10, 20, 40, 60, 120],
+    "trend_fast_ma": [0, 10, 20, 40, 60],
     "trend_ma": [20, 60, 120, 200],
     "vol_window": [20, 60, 120],
     "regime_fast_ma": [20, 40, 60],
@@ -32,6 +32,9 @@ DEFAULT_SEARCH_SPACE: Dict[str, List[Any]] = {
     "cash_entry_mode": ["daily_when_cash", "rebalance_only"],
     "cash_entry_confirmations": [1, 2, 3],
     "min_days_to_rebalance_for_cash_entry": [0, 2, 5],
+    "min_holding_days": [0, 10, 20, 30],
+    "rank_switch_buffer": [0, 1, 2],
+    "rebalance_turnover_threshold": [0.0, 0.1, 0.18, 0.25],
 }
 
 
@@ -101,6 +104,25 @@ TEMPLATE_SEARCH_KEYS: Dict[str, List[str]] = {
         "cash_entry_mode",
         "cash_entry_confirmations",
         "min_days_to_rebalance_for_cash_entry",
+    ],
+    "biweekly_adaptive_stable_rotation": [
+        "momentum_window",
+        "absolute_window",
+        "trend_fast_ma",
+        "trend_ma",
+        "vol_window",
+        "regime_fast_ma",
+        "regime_slow_ma",
+        "regime_momentum_window",
+        "top_k_uptrend",
+        "top_k_range",
+        "top_k_downtrend",
+        "cash_entry_mode",
+        "cash_entry_confirmations",
+        "min_days_to_rebalance_for_cash_entry",
+        "min_holding_days",
+        "rank_switch_buffer",
+        "rebalance_turnover_threshold",
     ],
     "donchian_breakout_rotation": [
         "rebalance_frequency",
@@ -528,7 +550,8 @@ class MiningService:
             "min_days_to_rebalance_for_cash_entry": int(combo.get("min_days_to_rebalance_for_cash_entry", 2)),
         }
         window = int(combo.get("momentum_window", 60))
-        trend_fast_ma = int(combo.get("trend_fast_ma", 20))
+        trend_fast_default = 10 if template == "biweekly_adaptive_stable_rotation" else 20
+        trend_fast_ma = int(combo.get("trend_fast_ma", trend_fast_default))
         trend_ma = int(combo.get("trend_ma", 120))
         vol_window = int(combo.get("vol_window", 60))
         absolute_window = int(combo.get("absolute_window", min(window, 120)))
@@ -554,27 +577,41 @@ class MiningService:
             params["fast_ma"] = max(5, min(trend_fast_ma or 20, trend_ma))
             params["slow_ma"] = trend_ma
             params["score_window"] = window
-        elif template == "adaptive_regime_rotation":
+        elif template in {"adaptive_regime_rotation", "biweekly_adaptive_stable_rotation"}:
+            is_biweekly_stable = template == "biweekly_adaptive_stable_rotation"
+            if is_biweekly_stable:
+                params["rebalance_frequency"] = "biweekly"
+                params["top_k"] = int(combo.get("top_k_uptrend", 2))
+                params["momentum_windows"] = [20, 60, 120]
+                params["momentum_weights"] = [0.25, 0.45, 0.3]
+                params["absolute_window"] = min(max(20, absolute_window), 60)
+                params["trend_fast_ma"] = min(max(10, trend_fast_ma), 20)
+                params["trend_ma"] = min(max(60, trend_ma), 120)
+                params["vol_window"] = min(max(20, vol_window), 60)
+                params["min_holding_days"] = int(combo.get("min_holding_days", 20))
+                params["rank_switch_buffer"] = int(combo.get("rank_switch_buffer", 2))
+                params["rebalance_turnover_threshold"] = float(combo.get("rebalance_turnover_threshold", 0.18))
+            else:
+                params["top_k"] = int(combo.get("top_k_uptrend", combo.get("top_k", 1)))
+                params["momentum_windows"] = [40, max(60, window), 250]
+                params["momentum_weights"] = [0.3, 0.5, 0.2]
             params.update(
                 {
-                    "top_k": int(combo.get("top_k_uptrend", combo.get("top_k", 1))),
-                    "top_k_uptrend": int(combo.get("top_k_uptrend", 1)),
+                    "top_k_uptrend": int(combo.get("top_k_uptrend", 2 if is_biweekly_stable else 1)),
                     "top_k_range": int(combo.get("top_k_range", 2)),
                     "top_k_downtrend": int(combo.get("top_k_downtrend", 1)),
-                    "momentum_windows": [40, max(60, window), 250],
-                    "momentum_weights": [0.3, 0.5, 0.2],
-                    "vol_penalty": 0.03,
+                    "vol_penalty": 0.04 if is_biweekly_stable else 0.03,
                     "regime_fast_ma": int(combo.get("regime_fast_ma", 20)),
                     "regime_slow_ma": int(combo.get("regime_slow_ma", 120)),
-                    "regime_momentum_window": int(combo.get("regime_momentum_window", 60)),
-                    "regime_up_threshold": 0.02,
-                    "regime_down_threshold": -0.03,
-                    "range_window": min(window, 60),
-                    "range_ma": min(trend_ma, 120),
-                    "range_vol_window": min(vol_window, 60),
+                    "regime_momentum_window": int(combo.get("regime_momentum_window", 60 if is_biweekly_stable else 60)),
+                    "regime_up_threshold": 0.015 if is_biweekly_stable else 0.02,
+                    "regime_down_threshold": -0.025 if is_biweekly_stable else -0.03,
+                    "range_window": max(20, min(window, 60)) if is_biweekly_stable else min(window, 60),
+                    "range_ma": min(trend_ma, 60 if is_biweekly_stable else 120),
+                    "range_vol_window": max(20, min(vol_window, 60)) if is_biweekly_stable else min(vol_window, 60),
                     "range_vol_penalty": 0.02,
-                    "defensive_window": min(max(window, 40), 120),
-                    "defensive_ma": max(60, min(trend_ma, 200)),
+                    "defensive_window": min(max(window, 60), 120),
+                    "defensive_ma": 120 if is_biweekly_stable else max(60, min(trend_ma, 200)),
                 }
             )
         elif template == "donchian_breakout_rotation":

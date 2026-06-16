@@ -41,9 +41,11 @@ export interface BacktestSignal {
   reason: string
   eligible_count: number
   eligible: string[]
+  raw_selected?: string[]
   selected: string[]
   target_weights: Record<string, number>
   scores: Record<string, number>
+  stability?: Record<string, any>
   cash_entry_streak?: number
   days_to_next_rebalance?: number | null
 }
@@ -54,6 +56,16 @@ export interface BacktestDiagnostics {
   equal_weight_return?: number
   best_asset?: { code: string; return: number }
   worst_asset?: { code: string; return: number }
+  return_attribution?: Array<{
+    code: string
+    name?: string
+    contribution: number
+    contribution_share: number
+    avg_weight: number
+    active_days: number
+    asset_return?: number
+  }>
+  return_attribution_residual?: number
   active_days_ratio?: number
   trading_days?: number
   data_start?: string

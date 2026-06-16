@@ -512,6 +512,7 @@ STRATEGIES: Dict[str, StrategyFn] = {
     "dual_momentum_core": _dual_momentum_core,
     "trend_following_equal_weight": _trend_following_equal_weight,
     "adaptive_regime_rotation": _adaptive_regime_rotation,
+    "biweekly_adaptive_stable_rotation": _adaptive_regime_rotation,
     "donchian_breakout_rotation": _donchian_breakout_rotation,
     "rsrs_timing_rotation": _rsrs_timing_rotation,
     "chan_fractal_rotation": _chan_fractal_rotation,
@@ -565,8 +566,15 @@ class BacktestEngine:
         cash_days = 0
         cash_entry_streak = 0
         cash_entry_signature: Tuple[str, ...] = tuple()
+        attribution_values = {code: 0.0 for code in ctx.close.columns}
+        active_days = {code: 0 for code in ctx.close.columns}
+        weight_sums = {code: 0.0 for code in ctx.close.columns}
+        holding_start_positions: Dict[str, int] = {}
+        previous_close_prices: Optional[pd.Series] = None
 
         for position, date in enumerate(trade_index):
+            open_prices = ctx.open.loc[date]
+            shares_before_trades = dict(shares)
             if date in pending_targets:
                 cash, turnover, new_trades = self._execute_rebalance(
                     date, ctx, shares, cash, pending_targets.pop(date), config
@@ -596,6 +604,24 @@ class BacktestEngine:
                     "weights": {code: round(float(weight), 6) for code, weight in weights.items()},
                 }
             )
+            for code, weight in weights.items():
+                active_days[code] = active_days.get(code, 0) + 1
+                weight_sums[code] = weight_sums.get(code, 0.0) + float(weight)
+            for code in list(holding_start_positions):
+                if code not in weights:
+                    holding_start_positions.pop(code, None)
+            for code in weights:
+                holding_start_positions.setdefault(code, position)
+            if previous_close_prices is not None:
+                self._accumulate_return_attribution(
+                    attribution_values,
+                    shares_before_trades,
+                    shares,
+                    previous_close_prices,
+                    open_prices,
+                    close_prices,
+                )
+            previous_close_prices = close_prices
 
             initial_entry_blocked = not weights and position < entry_delay
             periodic_signal = date in signal_dates and not initial_entry_blocked
@@ -609,7 +635,15 @@ class BacktestEngine:
                 signal = strategy_fn(ctx, date, params)
                 execute_date = next_by_date.get(date)
                 if execute_date is not None:
-                    target_weights = _normalize_weights(signal.weights)
+                    raw_target_weights = _normalize_weights(signal.weights)
+                    target_weights, stability = self._stabilize_target_weights(
+                        signal,
+                        raw_target_weights,
+                        weights,
+                        holding_start_positions,
+                        position,
+                        params,
+                    )
                     if periodic_signal:
                         pending_targets[execute_date] = target_weights
                         signal_records.append(
@@ -620,11 +654,13 @@ class BacktestEngine:
                                 "reason": signal.reason,
                                 "eligible_count": len(signal.eligible),
                                 "eligible": signal.eligible[:20],
+                                "raw_selected": list(raw_target_weights.keys()),
                                 "selected": list(target_weights.keys()),
                                 "target_weights": {
                                     code: round(float(weight), 6) for code, weight in target_weights.items()
                                 },
                                 "scores": signal.scores,
+                                "stability": stability,
                             }
                         )
                         cash_entry_streak = 0
@@ -655,12 +691,14 @@ class BacktestEngine:
                                     "reason": signal.reason,
                                     "eligible_count": len(signal.eligible),
                                     "eligible": signal.eligible[:20],
+                                    "raw_selected": list(raw_target_weights.keys()),
                                     "selected": list(target_weights.keys()),
                                     "target_weights": {
                                         code: round(float(weight), 6)
                                         for code, weight in target_weights.items()
                                     },
                                     "scores": signal.scores,
+                                    "stability": stability,
                                     "cash_entry_streak": cash_entry_streak,
                                     "days_to_next_rebalance": days_to_next_rebalance,
                                 }
@@ -680,7 +718,15 @@ class BacktestEngine:
             "positions": position_records,
             "signals": signal_records,
             "trades": trades,
-            "diagnostics": self._diagnostics(ctx, config, metrics),
+            "diagnostics": self._diagnostics(
+                ctx,
+                config,
+                metrics,
+                attribution_values,
+                active_days,
+                weight_sums,
+                len(equity_curve),
+            ),
         }
 
     def _build_context(self, records_by_code: Dict[str, List[Dict[str, Any]]], start: str, end: str) -> StrategyContext:
@@ -718,6 +764,75 @@ class BacktestEngine:
             volume=volume[valid_cols].reindex(close.index),
             returns=close.pct_change().replace([np.inf, -np.inf], np.nan).fillna(0),
         )
+
+    def _stabilize_target_weights(
+        self,
+        signal: StrategySignal,
+        raw_target_weights: Dict[str, float],
+        current_weights: Dict[str, float],
+        holding_start_positions: Dict[str, int],
+        position: int,
+        params: Dict[str, Any],
+    ) -> Tuple[Dict[str, float], Dict[str, Any]]:
+        if not raw_target_weights or not current_weights:
+            return raw_target_weights, {}
+
+        min_holding_days = self._int_param(params, "min_holding_days", 0, minimum=0)
+        rank_switch_buffer = self._int_param(params, "rank_switch_buffer", 0, minimum=0)
+        turnover_threshold = float(params.get("rebalance_turnover_threshold", 0.0) or 0.0)
+        if min_holding_days <= 0 and rank_switch_buffer <= 0 and turnover_threshold <= 0:
+            return raw_target_weights, {}
+
+        target_count = max(1, len(raw_target_weights))
+        ranked_codes = [
+            code
+            for code, value in sorted(signal.scores.items(), key=lambda item: item[1], reverse=True)
+            if np.isfinite(value)
+        ]
+        rank_by_code = {code: index + 1 for index, code in enumerate(ranked_codes)}
+        eligible = set(signal.eligible)
+        kept: List[str] = []
+        keep_reasons: Dict[str, str] = {}
+        for code in current_weights:
+            if code not in eligible or code not in rank_by_code:
+                continue
+            holding_days = position - holding_start_positions.get(code, position)
+            rank = rank_by_code[code]
+            if min_holding_days > 0 and holding_days < min_holding_days:
+                kept.append(code)
+                keep_reasons[code] = f"min_holding_days:{holding_days}/{min_holding_days}"
+            elif rank_switch_buffer > 0 and rank <= target_count + rank_switch_buffer:
+                kept.append(code)
+                keep_reasons[code] = f"rank_buffer:{rank}<={target_count + rank_switch_buffer}"
+
+        if kept:
+            combined: List[str] = []
+            for code in kept + list(raw_target_weights.keys()):
+                if code not in combined:
+                    combined.append(code)
+            target_weights = _normalize_weights({code: 1.0 for code in combined[:target_count]})
+        else:
+            target_weights = raw_target_weights
+
+        turnover = self._target_turnover(current_weights, target_weights)
+        skipped_by_turnover = False
+        if turnover_threshold > 0 and 0 < turnover < turnover_threshold:
+            target_weights = _normalize_weights(current_weights)
+            skipped_by_turnover = True
+
+        return target_weights, {
+            "kept": kept,
+            "keep_reasons": keep_reasons,
+            "raw_selected": list(raw_target_weights.keys()),
+            "turnover": round(float(turnover), 6),
+            "turnover_threshold": turnover_threshold,
+            "skipped_by_turnover": skipped_by_turnover,
+        }
+
+    @staticmethod
+    def _target_turnover(current_weights: Dict[str, float], target_weights: Dict[str, float]) -> float:
+        codes = set(current_weights) | set(target_weights)
+        return 0.5 * sum(abs(float(target_weights.get(code, 0.0)) - float(current_weights.get(code, 0.0))) for code in codes)
 
     def _execute_rebalance(
         self,
@@ -794,6 +909,27 @@ class BacktestEngine:
 
         return cash, traded_notional / equity_before, trades
 
+    def _accumulate_return_attribution(
+        self,
+        attribution_values: Dict[str, float],
+        shares_before_trades: Dict[str, float],
+        shares_after_trades: Dict[str, float],
+        previous_close_prices: pd.Series,
+        open_prices: pd.Series,
+        close_prices: pd.Series,
+    ) -> None:
+        for code in attribution_values:
+            previous_close = _clean_float(previous_close_prices.get(code))
+            open_price = _clean_float(open_prices.get(code))
+            close_price = _clean_float(close_prices.get(code))
+            if previous_close is None or open_price is None or close_price is None:
+                continue
+            quantity_before = _clean_float(shares_before_trades.get(code), 0.0) or 0.0
+            quantity_after = _clean_float(shares_after_trades.get(code), 0.0) or 0.0
+            gap_pnl = quantity_before * (open_price - previous_close)
+            intraday_pnl = quantity_after * (close_price - open_price)
+            attribution_values[code] += float(gap_pnl + intraday_pnl)
+
     def _metrics(
         self,
         equity_curve: List[Dict[str, Any]],
@@ -829,7 +965,16 @@ class BacktestEngine:
             "commission_ratio": round(float(total_commission / equity.iloc[0]), 6) if equity.iloc[0] else 0.0,
         }
 
-    def _diagnostics(self, ctx: StrategyContext, config: BacktestConfig, metrics: Dict[str, Any]) -> Dict[str, Any]:
+    def _diagnostics(
+        self,
+        ctx: StrategyContext,
+        config: BacktestConfig,
+        metrics: Dict[str, Any],
+        attribution_values: Dict[str, float],
+        active_days: Dict[str, int],
+        weight_sums: Dict[str, float],
+        total_days: int,
+    ) -> Dict[str, Any]:
         close = ctx.close.loc[config.start_date : config.end_date]
         returns = close.pct_change().replace([np.inf, -np.inf], np.nan).fillna(0)
         asset_returns: Dict[str, float] = {}
@@ -844,6 +989,15 @@ class BacktestEngine:
         equal_weight_return = float((1 + daily_equal_returns).prod() - 1) if not daily_equal_returns.empty else None
         best_asset = max(asset_returns.items(), key=lambda item: item[1]) if asset_returns else None
         worst_asset = min(asset_returns.items(), key=lambda item: item[1]) if asset_returns else None
+        attribution = self._return_attribution(
+            config,
+            metrics,
+            asset_returns,
+            attribution_values,
+            active_days,
+            weight_sums,
+            total_days,
+        )
 
         return {
             "benchmark_code": benchmark_code,
@@ -851,6 +1005,8 @@ class BacktestEngine:
             "equal_weight_return": round(equal_weight_return, 6) if equal_weight_return is not None else None,
             "best_asset": {"code": best_asset[0], "return": best_asset[1]} if best_asset else None,
             "worst_asset": {"code": worst_asset[0], "return": worst_asset[1]} if worst_asset else None,
+            "return_attribution": attribution["items"],
+            "return_attribution_residual": attribution["residual"],
             "active_days_ratio": round(float(1 - metrics.get("cash_days_ratio", 1)), 6),
             "trading_days": int(len(close.index)),
             "data_start": close.index[0].strftime("%Y-%m-%d") if len(close.index) else config.start_date,
@@ -861,6 +1017,43 @@ class BacktestEngine:
                 int(len(close.index)),
             ),
         }
+
+    def _return_attribution(
+        self,
+        config: BacktestConfig,
+        metrics: Dict[str, Any],
+        asset_returns: Dict[str, float],
+        attribution_values: Dict[str, float],
+        active_days: Dict[str, int],
+        weight_sums: Dict[str, float],
+        total_days: int,
+    ) -> Dict[str, Any]:
+        name_by_code = {item["code"]: item["name"] for item in DEFAULT_ETF_UNIVERSE}
+        initial_cash = max(float(config.initial_cash), 1.0)
+        total_return = float(metrics.get("total_return", 0.0) or 0.0)
+        items: List[Dict[str, Any]] = []
+        for code in config.universe:
+            code = str(code).zfill(6)
+            contribution = float(attribution_values.get(code, 0.0)) / initial_cash
+            held_days = int(active_days.get(code, 0))
+            if held_days <= 0 and abs(contribution) < 1e-10:
+                continue
+            avg_weight = float(weight_sums.get(code, 0.0)) / max(total_days, 1)
+            contribution_share = contribution / total_return if abs(total_return) > 1e-10 else 0.0
+            items.append(
+                {
+                    "code": code,
+                    "name": name_by_code.get(code, code),
+                    "contribution": round(contribution, 6),
+                    "contribution_share": round(float(contribution_share), 6),
+                    "avg_weight": round(avg_weight, 6),
+                    "active_days": held_days,
+                    "asset_return": asset_returns.get(code),
+                }
+            )
+        items.sort(key=lambda item: item["contribution"], reverse=True)
+        residual = total_return - sum(float(item["contribution"]) for item in items)
+        return {"items": items, "residual": round(float(residual), 6)}
 
     def _strategy_params(self, strategy_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
         return strategy_default_params(strategy_id, params)

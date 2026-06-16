@@ -129,6 +129,34 @@
           </el-descriptions>
         </section>
 
+        <section v-if="returnAttributionRows.length" class="table-band">
+          <div class="section-title">
+            <span>收益来源（持仓贡献估算）</span>
+            <small>残差 {{ pct(singleResult?.diagnostics?.return_attribution_residual) }}</small>
+          </div>
+          <el-table :data="returnAttributionRows" size="small" height="260">
+            <el-table-column label="ETF" min-width="180">
+              <template #default="{ row }">
+                <strong>{{ row.code }}</strong>
+                <span class="muted-cell">{{ row.name }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="贡献" width="100">
+              <template #default="{ row }">{{ pct(row.contribution) }}</template>
+            </el-table-column>
+            <el-table-column label="占总收益" width="100">
+              <template #default="{ row }">{{ pct(row.contribution_share) }}</template>
+            </el-table-column>
+            <el-table-column label="持有天数" prop="active_days" width="90" />
+            <el-table-column label="平均仓位" width="100">
+              <template #default="{ row }">{{ pct(row.avg_weight) }}</template>
+            </el-table-column>
+            <el-table-column label="标的涨跌" width="100">
+              <template #default="{ row }">{{ pct(row.asset_return) }}</template>
+            </el-table-column>
+          </el-table>
+        </section>
+
         <section v-if="singleResult?.signals?.length" class="table-band">
           <el-table :data="singleResult.signals.slice(-30).reverse()" size="small" height="300">
             <el-table-column prop="date" label="信号日" width="110" />
@@ -148,6 +176,12 @@
             </el-table-column>
             <el-table-column label="选中" min-width="160">
               <template #default="{ row }">{{ row.selected.join(', ') || '空仓' }}</template>
+            </el-table-column>
+            <el-table-column label="原始选中" min-width="160">
+              <template #default="{ row }">{{ row.raw_selected?.join(', ') || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="稳定器" min-width="180">
+              <template #default="{ row }">{{ stabilityLabel(row.stability) }}</template>
             </el-table-column>
             <el-table-column label="目标权重" min-width="180">
               <template #default="{ row }">{{ formatWeights(row.target_weights) }}</template>
@@ -375,7 +409,7 @@ const stabilityDates = ref<[string, string]>([defaultStart, defaultEnd])
 const mineDates = ref<[string, string]>([defaultStart, defaultEnd])
 
 const singleForm = reactive({
-  strategy_id: 'industry_momentum_enhanced',
+  strategy_id: 'biweekly_adaptive_stable_rotation',
   initial_cash: 1000000,
   commission_bps: 5,
   slippage_bps: 5,
@@ -398,11 +432,11 @@ const visibleUniverseItems = computed(() => rotationUniverse.value.slice(0, 18))
 const hiddenUniverseCount = computed(() => Math.max(0, rotationUniverse.value.length - visibleUniverseItems.value.length))
 
 const compareForm = reactive({
-  strategyIds: ['industry_momentum_enhanced', 'vol_adjusted_momentum', 'donchian_breakout_rotation']
+  strategyIds: ['biweekly_adaptive_stable_rotation', 'adaptive_regime_rotation', 'industry_momentum_enhanced', 'donchian_breakout_rotation']
 })
 
 const mineForm = reactive({
-  templates: ['industry_momentum_enhanced', 'vol_adjusted_momentum', 'trend_following_equal_weight', 'rsrs_timing_rotation'],
+  templates: ['biweekly_adaptive_stable_rotation', 'adaptive_regime_rotation', 'industry_momentum_enhanced', 'donchian_breakout_rotation'],
   search_method: 'random',
   max_trials: 40,
   seed: 7
@@ -587,6 +621,10 @@ function strategyName(id: string) {
   return strategies.value.find((item) => item.id === id)?.name || id
 }
 
+function etfName(code: string) {
+  return etfUniverse.value.find((item) => item.code === code)?.name || code
+}
+
 function pct(value?: number) {
   if (value === undefined || value === null || Number.isNaN(value)) return '-'
   return `${(value * 100).toFixed(2)}%`
@@ -661,7 +699,10 @@ const fallbackParamLabels: Record<string, string> = {
   range_vol_penalty: '震荡波动惩罚',
   defensive_codes: '防守资产池',
   defensive_window: '防守动量窗口',
-  defensive_ma: '防守均线'
+  defensive_ma: '防守均线',
+  min_holding_days: '最短持有交易日',
+  rank_switch_buffer: '排名缓冲',
+  rebalance_turnover_threshold: '小换仓过滤'
 }
 
 function familyLabel(value?: string) {
@@ -755,6 +796,15 @@ function formatScores(scores: Record<string, number>) {
   return entries.map(([code, score]) => `${code}:${num(score)}`).join(' | ')
 }
 
+function stabilityLabel(stability?: Record<string, any>) {
+  if (!stability || !Object.keys(stability).length) return '-'
+  const parts: string[] = []
+  const kept = Array.isArray(stability.kept) ? stability.kept : []
+  if (kept.length) parts.push(`保留 ${kept.join(', ')}`)
+  if (stability.skipped_by_turnover) parts.push(`小换仓 ${pct(stability.turnover)}`)
+  return parts.join(' | ') || `换手 ${pct(stability.turnover)}`
+}
+
 function metricRows(metrics: any) {
   return [
     { label: '总收益', value: pct(metrics.total_return) },
@@ -767,6 +817,14 @@ function metricRows(metrics: any) {
     { label: '手续费占比', value: pct(metrics.commission_ratio) }
   ]
 }
+
+const returnAttributionRows = computed(() => {
+  const rows = singleResult.value?.diagnostics?.return_attribution || []
+  return rows.map((item) => ({
+    ...item,
+    name: item.name || etfName(item.code)
+  }))
+})
 
 function equitySeries(result: BacktestResult) {
   const base = result.equity_curve[0]?.equity || 1
@@ -1045,6 +1103,27 @@ onUnmounted(stopPolling)
 
 .wide-control {
   width: 280px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-weight: 650;
+
+  small {
+    color: var(--el-text-color-secondary);
+    font-weight: 400;
+  }
+}
+
+.muted-cell {
+  display: block;
+  margin-top: 2px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 
 .result-grid {

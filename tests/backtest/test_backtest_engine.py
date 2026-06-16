@@ -12,6 +12,7 @@ from app.services.backtest.engine import (
     DEFAULT_ROTATION_UNIVERSE,
     STRATEGIES,
     StrategyContext,
+    StrategySignal,
     _empty_rule_mask,
     _rebalance_dates,
 )
@@ -76,6 +77,19 @@ def test_strategy_catalog_matches_engine_registry() -> None:
     assert params["empty_threshold"] == "trend_filter"
 
 
+def test_biweekly_adaptive_strategy_uses_biweekly_ma_cadence() -> None:
+    params = strategy_default_params("biweekly_adaptive_stable_rotation")
+
+    assert params["rebalance_frequency"] == "biweekly"
+    assert params["momentum_windows"] == [20, 60, 120]
+    assert params["trend_fast_ma"] == 10
+    assert params["trend_ma"] == 60
+    assert params["regime_fast_ma"] == 10
+    assert params["regime_slow_ma"] == 120
+    assert params["min_holding_days"] == 20
+    assert params["rank_switch_buffer"] == 2
+
+
 def test_biweekly_rebalance_dates_use_every_other_week() -> None:
     dates = pd.bdate_range("2021-01-01", "2021-01-29")
 
@@ -84,6 +98,28 @@ def test_biweekly_rebalance_dates_use_every_other_week() -> None:
 
     assert weekly == ["2021-01-01", "2021-01-08", "2021-01-15", "2021-01-22"]
     assert biweekly == ["2021-01-01", "2021-01-15"]
+
+
+def test_rank_buffer_keeps_current_holding_when_still_near_top() -> None:
+    engine = BacktestEngine()
+    signal = StrategySignal(
+        weights={"512800": 1.0},
+        scores={"512800": 0.12, "510300": 0.11, "512880": 0.08},
+        eligible=["512800", "510300", "512880"],
+    )
+
+    target, stability = engine._stabilize_target_weights(
+        signal=signal,
+        raw_target_weights={"512800": 1.0},
+        current_weights={"510300": 1.0},
+        holding_start_positions={"510300": 0},
+        position=30,
+        params={"rank_switch_buffer": 1},
+    )
+
+    assert target == {"510300": 1.0}
+    assert stability["kept"] == ["510300"]
+    assert stability["keep_reasons"]["510300"] == "rank_buffer:2<=2"
 
 
 def test_trend_filter_can_require_fast_ma_above_slow_ma() -> None:
@@ -588,3 +624,39 @@ def test_full_exit_does_not_leave_zero_weight_dust_position() -> None:
 
     assert after_exit
     assert all(not row["weights"] for row in after_exit)
+
+
+def test_return_attribution_reports_held_etf_contribution() -> None:
+    engine = BacktestEngine()
+    records_by_code = {
+        "510300": _records([100 + i * 0.5 for i in range(90)]),
+        "512800": _records([100 - i * 0.1 for i in range(90)]),
+    }
+
+    result = engine.run(
+        records_by_code,
+        BacktestConfig(
+            strategy_id="dual_momentum_core",
+            start_date="2021-01-01",
+            end_date="2021-04-30",
+            universe=["510300", "512800"],
+            commission_bps=0,
+            slippage_bps=0,
+            params={
+                "momentum_window": 5,
+                "trend_ma": 3,
+                "rebalance_frequency": "weekly",
+                "top_k": 1,
+                "empty_threshold": "ret_gt_0",
+                "cash_entry_mode": "rebalance_only",
+            },
+        ),
+    )
+
+    attribution = result["diagnostics"]["return_attribution"]
+    by_code = {item["code"]: item for item in attribution}
+
+    assert by_code["510300"]["contribution"] > 0
+    assert by_code["510300"]["active_days"] > 0
+    assert "512800" not in by_code or by_code["512800"]["active_days"] == 0
+    assert "return_attribution_residual" in result["diagnostics"]
