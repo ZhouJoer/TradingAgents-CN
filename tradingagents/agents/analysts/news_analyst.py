@@ -7,7 +7,10 @@ from datetime import datetime
 from tradingagents.utils.logging_init import get_logger
 from tradingagents.utils.tool_logging import log_analyst_module
 # 导入统一新闻工具
-from tradingagents.tools.unified_news_tool import create_unified_news_tool
+from tradingagents.tools.unified_news_tool import (
+    build_news_fetch_failure_report,
+    create_unified_news_tool,
+)
 # 导入股票工具类
 from tradingagents.utils.stock_utils import StockUtils
 # 导入Google工具调用处理器
@@ -99,21 +102,7 @@ def create_news_analyst(llm, toolkit):
 
         def _news_fetch_failure_report(raw_news: str = "") -> str:
             """生成明确的数据获取失败报告，避免误判为无新闻。"""
-            detail = raw_news.strip() if raw_news else "所有新闻源均未返回可用新闻数据。"
-            return f"""# {company_name}（{ticker}）新闻数据获取失败
-
-## 数据状态
-
-本次新闻分析未能获取到可验证的新闻内容，因此不能据此判断“该股票没有新闻”。
-
-## 失败详情
-
-{detail}
-
-## 处理建议
-
-请检查新闻源连通性、API Key 配置、AKShare/东方财富接口可用性，以及本地 stock_news 缓存同步状态。修复数据源后建议重新运行新闻分析。
-"""
+            return build_news_fetch_failure_report(company_name, ticker, raw_news)
         
         # 🔧 使用统一新闻工具，简化工具调用
         logger.info(f"[新闻分析师] 使用统一新闻工具，自动识别股票类型并获取相应新闻")

@@ -572,6 +572,8 @@ class BacktestEngine:
         holding_start_positions: Dict[str, int] = {}
         previous_close_prices: Optional[pd.Series] = None
 
+        total_commission = 0.0
+
         for position, date in enumerate(trade_index):
             open_prices = ctx.open.loc[date]
             shares_before_trades = dict(shares)
@@ -581,6 +583,7 @@ class BacktestEngine:
                 )
                 turnover_values.append(turnover)
                 trades.extend(new_trades)
+                total_commission += sum(float(trade.get("commission", 0.0) or 0.0) for trade in new_trades)
                 cash_entry_streak = 0
                 cash_entry_signature = tuple()
 
@@ -726,6 +729,7 @@ class BacktestEngine:
                 active_days,
                 weight_sums,
                 len(equity_curve),
+                total_commission,
             ),
         }
 
@@ -794,14 +798,14 @@ class BacktestEngine:
         kept: List[str] = []
         keep_reasons: Dict[str, str] = {}
         for code in current_weights:
-            if code not in eligible or code not in rank_by_code:
+            if code not in eligible:
                 continue
             holding_days = position - holding_start_positions.get(code, position)
-            rank = rank_by_code[code]
+            rank = rank_by_code.get(code)
             if min_holding_days > 0 and holding_days < min_holding_days:
                 kept.append(code)
                 keep_reasons[code] = f"min_holding_days:{holding_days}/{min_holding_days}"
-            elif rank_switch_buffer > 0 and rank <= target_count + rank_switch_buffer:
+            elif rank_switch_buffer > 0 and rank is not None and rank <= target_count + rank_switch_buffer:
                 kept.append(code)
                 keep_reasons[code] = f"rank_buffer:{rank}<={target_count + rank_switch_buffer}"
 
@@ -814,17 +818,20 @@ class BacktestEngine:
         else:
             target_weights = raw_target_weights
 
-        turnover = self._target_turnover(current_weights, target_weights)
+        pre_skip_turnover = self._target_turnover(current_weights, target_weights)
         skipped_by_turnover = False
-        if turnover_threshold > 0 and 0 < turnover < turnover_threshold:
+        if turnover_threshold > 0 and 0 < pre_skip_turnover < turnover_threshold:
             target_weights = _normalize_weights(current_weights)
             skipped_by_turnover = True
+        final_turnover = self._target_turnover(current_weights, target_weights)
 
         return target_weights, {
             "kept": kept,
             "keep_reasons": keep_reasons,
             "raw_selected": list(raw_target_weights.keys()),
-            "turnover": round(float(turnover), 6),
+            "final_selected": list(target_weights.keys()),
+            "pre_skip_turnover": round(float(pre_skip_turnover), 6),
+            "turnover": round(float(final_turnover), 6),
             "turnover_threshold": turnover_threshold,
             "skipped_by_turnover": skipped_by_turnover,
         }
@@ -974,6 +981,7 @@ class BacktestEngine:
         active_days: Dict[str, int],
         weight_sums: Dict[str, float],
         total_days: int,
+        total_commission: float,
     ) -> Dict[str, Any]:
         close = ctx.close.loc[config.start_date : config.end_date]
         returns = close.pct_change().replace([np.inf, -np.inf], np.nan).fillna(0)
@@ -997,6 +1005,7 @@ class BacktestEngine:
             active_days,
             weight_sums,
             total_days,
+            total_commission,
         )
 
         return {
@@ -1007,6 +1016,8 @@ class BacktestEngine:
             "worst_asset": {"code": worst_asset[0], "return": worst_asset[1]} if worst_asset else None,
             "return_attribution": attribution["items"],
             "return_attribution_residual": attribution["residual"],
+            "return_attribution_residual_reason": attribution["residual_reason"],
+            "return_attribution_cost_drag": attribution["cost_drag"],
             "active_days_ratio": round(float(1 - metrics.get("cash_days_ratio", 1)), 6),
             "trading_days": int(len(close.index)),
             "data_start": close.index[0].strftime("%Y-%m-%d") if len(close.index) else config.start_date,
@@ -1027,6 +1038,7 @@ class BacktestEngine:
         active_days: Dict[str, int],
         weight_sums: Dict[str, float],
         total_days: int,
+        total_commission: float,
     ) -> Dict[str, Any]:
         name_by_code = {item["code"]: item["name"] for item in DEFAULT_ETF_UNIVERSE}
         initial_cash = max(float(config.initial_cash), 1.0)
@@ -1052,8 +1064,20 @@ class BacktestEngine:
                 }
             )
         items.sort(key=lambda item: item["contribution"], reverse=True)
-        residual = total_return - sum(float(item["contribution"]) for item in items)
-        return {"items": items, "residual": round(float(residual), 6)}
+        rounded_sum = sum(float(item["contribution"]) for item in items)
+        residual = total_return - rounded_sum
+        commission_drag = -float(total_commission) / initial_cash
+        reason_parts = [
+            "未分摊到单只ETF的现金收益、交易成本、滑点和四舍五入差异。",
+        ]
+        if abs(commission_drag) > 1e-10:
+            reason_parts.append("其中手续费拖累已单独列示。")
+        return {
+            "items": items,
+            "residual": round(float(residual), 6),
+            "residual_reason": "".join(reason_parts),
+            "cost_drag": round(float(commission_drag), 6),
+        }
 
     def _strategy_params(self, strategy_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
         return strategy_default_params(strategy_id, params)

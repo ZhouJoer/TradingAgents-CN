@@ -20,6 +20,7 @@ else:
 try:
     from app.models.industry_analysis import (
         DetailLevel,
+        DISCOVERY_INSIGHT_CATEGORIES,
         DiscoveryInsightItem,
         IndustryDiscoveryInsights,
         IndustryLogicSections,
@@ -38,6 +39,7 @@ except Exception:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     DetailLevel = module.DetailLevel
+    DISCOVERY_INSIGHT_CATEGORIES = module.DISCOVERY_INSIGHT_CATEGORIES
     DiscoveryInsightItem = module.DiscoveryInsightItem
     IndustryDiscoveryInsights = module.IndustryDiscoveryInsights
     IndustryLogicSections = module.IndustryLogicSections
@@ -431,13 +433,10 @@ class StockComparator:
         if not isinstance(value, dict):
             return IndustryDiscoveryInsights()
 
-        return IndustryDiscoveryInsights(
-            industry_bottlenecks=self._parse_discovery_items(value.get("industry_bottlenecks"), candidates),
-            non_consensus_targets=self._parse_discovery_items(value.get("non_consensus_targets"), candidates),
-            financial_inflections=self._parse_discovery_items(value.get("financial_inflections"), candidates),
-            red_team_counterpoints=self._parse_discovery_items(value.get("red_team_counterpoints"), candidates),
-            future_catalysts=self._parse_discovery_items(value.get("future_catalysts"), candidates),
-        )
+        return IndustryDiscoveryInsights(**{
+            key: self._parse_discovery_items(value.get(key), candidates)
+            for key, _label in DISCOVERY_INSIGHT_CATEGORIES
+        })
 
     def _parse_discovery_items(
         self,
@@ -606,13 +605,7 @@ class StockComparator:
         )]
 
     def _has_discovery_insights(self, value: IndustryDiscoveryInsights) -> bool:
-        return any((
-            value.industry_bottlenecks,
-            value.non_consensus_targets,
-            value.financial_inflections,
-            value.red_team_counterpoints,
-            value.future_catalysts,
-        ))
+        return any(getattr(value, key) for key, _label in DISCOVERY_INSIGHT_CATEGORIES)
 
     def _extract_markdown_sections(self, text: str) -> Dict[str, str]:
         """Split Markdown text into sections by headers."""

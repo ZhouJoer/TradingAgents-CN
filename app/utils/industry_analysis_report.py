@@ -6,6 +6,8 @@ import importlib.util
 from pathlib import Path
 from typing import Any
 
+from app.models.industry_analysis import DISCOVERY_INSIGHT_CATEGORIES
+
 
 def _load_strip_structured_payload_blocks():
     module_path = Path(__file__).resolve().parents[2] / "tradingagents" / "utils" / "structured_output.py"
@@ -178,17 +180,9 @@ def _build_discovery_insights_markdown(insights: Any) -> str:
     if not isinstance(insights, dict):
         return ""
 
-    categories = [
-        ("industry_bottlenecks", "产业瓶颈"),
-        ("non_consensus_targets", "非共识标的"),
-        ("financial_inflections", "财务拐点"),
-        ("red_team_counterpoints", "红队反证"),
-        ("future_catalysts", "未来催化事件"),
-    ]
-
     lines = ["## 主题发现"]
     has_items = False
-    for key, label in categories:
+    for key, label in DISCOVERY_INSIGHT_CATEGORIES:
         items = insights.get(key)
         if not isinstance(items, list) or not items:
             continue

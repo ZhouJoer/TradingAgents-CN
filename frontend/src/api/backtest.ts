@@ -45,9 +45,20 @@ export interface BacktestSignal {
   selected: string[]
   target_weights: Record<string, number>
   scores: Record<string, number>
-  stability?: Record<string, any>
+  stability?: BacktestSignalStability
   cash_entry_streak?: number
   days_to_next_rebalance?: number | null
+}
+
+export interface BacktestSignalStability {
+  kept?: string[]
+  keep_reasons?: Record<string, string>
+  raw_selected?: string[]
+  final_selected?: string[]
+  pre_skip_turnover?: number
+  turnover?: number
+  turnover_threshold?: number
+  skipped_by_turnover?: boolean
 }
 
 export interface BacktestDiagnostics {
@@ -66,6 +77,8 @@ export interface BacktestDiagnostics {
     asset_return?: number
   }>
   return_attribution_residual?: number
+  return_attribution_residual_reason?: string
+  return_attribution_cost_drag?: number
   active_days_ratio?: number
   trading_days?: number
   data_start?: string

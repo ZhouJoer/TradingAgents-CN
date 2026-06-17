@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from app.services.report_credibility_service import ReportCredibilityService
+from app.services.report_credibility_service import ReportCredibilityService, format_credibility_markdown
 from app.utils.report_exporter import ReportExporter
 
 
@@ -180,3 +180,22 @@ def test_report_exporter_places_credibility_before_summary():
 
     assert "## 可信度说明" in markdown
     assert markdown.index("## 可信度说明") < markdown.index("## 📊 执行摘要")
+
+
+def test_report_credibility_fallback_is_exportable():
+    credibility = ReportCredibilityService.fallback(
+        {
+            "stock_symbol": "000001",
+            "analysis_date": "2026-06-10",
+            "model_info": "qwen-max",
+            "tokens_used": 100,
+        },
+        RuntimeError("boom"),
+    )
+
+    markdown = format_credibility_markdown(credibility)
+
+    assert credibility["unavailable"] is True
+    assert credibility["confidence_basis"]["label"] == "未知"
+    assert "可信度说明" in markdown
+    assert "可信度生成失败" in markdown

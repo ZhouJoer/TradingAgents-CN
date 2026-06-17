@@ -20,7 +20,7 @@ DEFAULT_SEARCH_SPACE: Dict[str, List[Any]] = {
     "trend_fast_ma": [0, 10, 20, 40, 60],
     "trend_ma": [20, 60, 120, 200],
     "vol_window": [20, 60, 120],
-    "regime_fast_ma": [20, 40, 60],
+    "regime_fast_ma": [10, 20, 40, 60],
     "regime_slow_ma": [120, 200, 250],
     "regime_momentum_window": [40, 60, 120],
     "rebalance_frequency": ["weekly", "biweekly", "monthly"],
@@ -549,12 +549,13 @@ class MiningService:
             "cash_entry_confirmations": int(combo.get("cash_entry_confirmations", 2)),
             "min_days_to_rebalance_for_cash_entry": int(combo.get("min_days_to_rebalance_for_cash_entry", 2)),
         }
+        is_biweekly_stable = template == "biweekly_adaptive_stable_rotation"
         window = int(combo.get("momentum_window", 60))
         trend_fast_default = 10 if template == "biweekly_adaptive_stable_rotation" else 20
         trend_fast_ma = int(combo.get("trend_fast_ma", trend_fast_default))
-        trend_ma = int(combo.get("trend_ma", 120))
-        vol_window = int(combo.get("vol_window", 60))
-        absolute_window = int(combo.get("absolute_window", min(window, 120)))
+        trend_ma = int(combo.get("trend_ma", 60 if is_biweekly_stable else 120))
+        vol_window = int(combo.get("vol_window", 20 if is_biweekly_stable else 60))
+        absolute_window = int(combo.get("absolute_window", 20 if is_biweekly_stable else min(window, 120)))
         params["momentum_window"] = window
         params["trend_fast_ma"] = trend_fast_ma
         params["trend_ma"] = trend_ma
@@ -578,7 +579,6 @@ class MiningService:
             params["slow_ma"] = trend_ma
             params["score_window"] = window
         elif template in {"adaptive_regime_rotation", "biweekly_adaptive_stable_rotation"}:
-            is_biweekly_stable = template == "biweekly_adaptive_stable_rotation"
             if is_biweekly_stable:
                 params["rebalance_frequency"] = "biweekly"
                 params["top_k"] = int(combo.get("top_k_uptrend", 2))
@@ -601,7 +601,11 @@ class MiningService:
                     "top_k_range": int(combo.get("top_k_range", 2)),
                     "top_k_downtrend": int(combo.get("top_k_downtrend", 1)),
                     "vol_penalty": 0.04 if is_biweekly_stable else 0.03,
-                    "regime_fast_ma": int(combo.get("regime_fast_ma", 20)),
+                    "regime_fast_ma": (
+                        min(max(10, int(combo.get("regime_fast_ma", 10))), 20)
+                        if is_biweekly_stable
+                        else int(combo.get("regime_fast_ma", 20))
+                    ),
                     "regime_slow_ma": int(combo.get("regime_slow_ma", 120)),
                     "regime_momentum_window": int(combo.get("regime_momentum_window", 60 if is_biweekly_stable else 60)),
                     "regime_up_threshold": 0.015 if is_biweekly_stable else 0.02,

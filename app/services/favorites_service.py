@@ -205,17 +205,20 @@ class FavoritesService:
                 "stock_name": stock_name,
                 "market": market,
                 "added_at": datetime.utcnow(),
-                "tags": tags or [],
-                "notes": notes,
-                "alert_price_high": alert_price_high,
-                "alert_price_low": alert_price_low,
-                "watch_reason": watch_reason,
-                "target_price_low": target_price_low,
-                "target_price_high": target_price_high,
-                "risk_reminder": risk_reminder,
-                "next_review_date": next_review_date,
-                "linked_report_ids": linked_report_ids or [],
-                "message_alert_enabled": message_alert_enabled,
+                "tags": self._sanitize_update_value("tags", tags),
+                "notes": self._sanitize_update_value("notes", notes),
+                "alert_price_high": self._sanitize_update_value("alert_price_high", alert_price_high),
+                "alert_price_low": self._sanitize_update_value("alert_price_low", alert_price_low),
+                "watch_reason": self._sanitize_update_value("watch_reason", watch_reason),
+                "target_price_low": self._sanitize_update_value("target_price_low", target_price_low),
+                "target_price_high": self._sanitize_update_value("target_price_high", target_price_high),
+                "risk_reminder": self._sanitize_update_value("risk_reminder", risk_reminder),
+                "next_review_date": self._sanitize_update_value("next_review_date", next_review_date),
+                "linked_report_ids": self._sanitize_update_value("linked_report_ids", linked_report_ids),
+                "message_alert_enabled": self._sanitize_update_value(
+                    "message_alert_enabled",
+                    message_alert_enabled,
+                ),
             }
 
             logger.info(f"🔧 [add_favorite] 自选股数据构建完成: {favorite_stock}")
@@ -342,12 +345,42 @@ class FavoritesService:
 
     def _sanitize_update_value(self, key: str, value: Any) -> Any:
         if key in {"tags", "linked_report_ids"}:
-            return value or []
+            return self._sanitize_string_list(value)
         if key in {"notes", "watch_reason", "risk_reminder"}:
             return value or ""
         if key == "message_alert_enabled":
             return bool(value)
+        if key in {"target_price_low", "target_price_high", "alert_price_high", "alert_price_low"}:
+            return self._number_or_none(value)
+        if key == "next_review_date":
+            return str(value).strip() if value not in (None, "") else None
         return value
+
+    @staticmethod
+    def _sanitize_string_list(value: Any) -> List[str]:
+        if not value:
+            return []
+        if not isinstance(value, list):
+            value = [value]
+        result: List[str] = []
+        seen = set()
+        for item in value:
+            text = str(item or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            result.append(text)
+        return result
+
+    @staticmethod
+    def _number_or_none(value: Any) -> Optional[float]:
+        if value in (None, ""):
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if number >= 0 else None
 
     async def is_favorite(self, user_id: str, stock_code: str) -> bool:
         """检查股票是否在自选股中（兼容字符串ID与ObjectId）"""

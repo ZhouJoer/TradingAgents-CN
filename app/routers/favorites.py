@@ -4,7 +4,7 @@
 
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import logging
 
 from app.routers.auth_db import get_current_user
@@ -22,7 +22,7 @@ class AddFavoriteRequest(BaseModel):
     stock_code: str
     stock_name: str
     market: str = "A股"
-    tags: List[str] = []
+    tags: List[str] = Field(default_factory=list)
     notes: str = ""
     alert_price_high: Optional[float] = None
     alert_price_low: Optional[float] = None
@@ -31,7 +31,7 @@ class AddFavoriteRequest(BaseModel):
     target_price_high: Optional[float] = None
     risk_reminder: str = ""
     next_review_date: Optional[str] = None
-    linked_report_ids: List[str] = []
+    linked_report_ids: List[str] = Field(default_factory=list)
     message_alert_enabled: bool = False
 
 
@@ -65,7 +65,7 @@ class FavoriteStockResponse(BaseModel):
     target_price_high: Optional[float] = None
     risk_reminder: str = ""
     next_review_date: Optional[str] = None
-    linked_report_ids: List[str] = []
+    linked_report_ids: List[str] = Field(default_factory=list)
     message_alert_enabled: bool = False
     # 实时数据
     current_price: Optional[float] = None

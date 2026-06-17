@@ -92,6 +92,23 @@ def test_adaptive_params_use_regime_search_keys() -> None:
     assert params["min_days_to_rebalance_for_cash_entry"] == 5
 
 
+def test_biweekly_stable_mining_defaults_match_strategy_catalog() -> None:
+    service = _service()
+
+    params = service._params_for_template("biweekly_adaptive_stable_rotation", {})
+
+    assert 10 in DEFAULT_SEARCH_SPACE["regime_fast_ma"]
+    assert params["rebalance_frequency"] == "biweekly"
+    assert params["momentum_windows"] == [20, 60, 120]
+    assert params["trend_fast_ma"] == 10
+    assert params["trend_ma"] == 60
+    assert params["vol_window"] == 20
+    assert params["absolute_window"] == 20
+    assert params["regime_fast_ma"] == 10
+    assert params["min_holding_days"] == 20
+    assert params["rank_switch_buffer"] == 2
+
+
 def test_split_plan_adds_walk_forward_slices() -> None:
     service = _service()
 

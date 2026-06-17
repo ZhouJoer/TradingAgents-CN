@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple
 # ============================================================================
 # 全局 UTF-8 编码设置（必须在最开始，支持 emoji 和中文）
 # ============================================================================
-if sys.platform == 'win32':
+if sys.platform == 'win32' and "pytest" not in sys.modules:
     try:
         # 1. 设置环境变量，让 Python 全局使用 UTF-8
         os.environ['PYTHONIOENCODING'] = 'utf-8'
@@ -100,6 +100,18 @@ def check_env_file():
     logger.info("-" * 50)
 
 
+def parse_port_owner_pids(netstat_output: str, port: int) -> List[str]:
+    """Parse process IDs listening on a local TCP port from netstat output."""
+    pids: List[str] = []
+    marker = f":{port}"
+    for line in netstat_output.splitlines():
+        parts = line.split()
+        if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[3].upper() == "LISTENING":
+            if parts[1].endswith(marker) and parts[-1] not in pids:
+                pids.append(parts[-1])
+    return pids
+
+
 def find_port_owner_pids(port: int) -> List[str]:
     """Return process IDs listening on a local TCP port when available."""
     if sys.platform != 'win32':
@@ -117,14 +129,7 @@ def find_port_owner_pids(port: int) -> List[str]:
     except Exception:
         return []
 
-    pids: List[str] = []
-    marker = f":{port}"
-    for line in result.stdout.splitlines():
-        parts = line.split()
-        if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[3].upper() == "LISTENING":
-            if parts[1].endswith(marker) and parts[-1] not in pids:
-                pids.append(parts[-1])
-    return pids
+    return parse_port_owner_pids(result.stdout, port)
 
 
 def ensure_port_available(host: str, port: int) -> None:
@@ -146,22 +151,32 @@ def ensure_port_available(host: str, port: int) -> None:
         sys.exit(1)
 
 
+def parse_env_bind_values(lines: List[str]) -> Dict[str, str]:
+    """Parse simple KEY=VALUE pairs from .env content for startup binding."""
+    values: Dict[str, str] = {}
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def read_env_bind_values(env_path: Path) -> Dict[str, str]:
+    """Read startup bind values from .env without importing full settings."""
+    if not env_path.exists():
+        return {}
+    try:
+        with env_path.open("r", encoding="utf-8") as f:
+            return parse_env_bind_values(f.readlines())
+    except Exception:
+        return {}
+
+
 def read_startup_bind_config() -> Tuple[str, int]:
     """Read HOST/PORT cheaply before importing pydantic settings."""
-    values: Dict[str, str] = {}
-    env_path = project_root / ".env"
-
-    if env_path.exists():
-        try:
-            with env_path.open("r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("#") or "=" not in line:
-                        continue
-                    key, value = line.split("=", 1)
-                    values[key.strip()] = value.strip().strip('"').strip("'")
-        except Exception:
-            pass
+    values = read_env_bind_values(project_root / ".env")
 
     host = (
         os.environ.get("HOST")

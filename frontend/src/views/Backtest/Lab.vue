@@ -132,7 +132,9 @@
         <section v-if="returnAttributionRows.length" class="table-band">
           <div class="section-title">
             <span>收益来源（持仓贡献估算）</span>
-            <small>残差 {{ pct(singleResult?.diagnostics?.return_attribution_residual) }}</small>
+            <small :title="singleResult?.diagnostics?.return_attribution_residual_reason">
+              残差 {{ pct(singleResult?.diagnostics?.return_attribution_residual) }} / 成本拖累 {{ pct(singleResult?.diagnostics?.return_attribution_cost_drag) }}
+            </small>
           </div>
           <el-table :data="returnAttributionRows" size="small" height="260">
             <el-table-column label="ETF" min-width="180">
@@ -384,7 +386,7 @@ import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, Vi
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import type { EChartsOption } from 'echarts'
-import { backtestApi, type BacktestResult, type BacktestStrategy, type EntryOffsetStabilityResult, type ETFUniverseItem, type MiningRun, type MiningTrial } from '@/api/backtest'
+import { backtestApi, type BacktestResult, type BacktestSignalStability, type BacktestStrategy, type EntryOffsetStabilityResult, type ETFUniverseItem, type MiningRun, type MiningTrial } from '@/api/backtest'
 
 echartsUse([LineChart, HeatmapChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, VisualMapComponent, CanvasRenderer])
 
@@ -796,7 +798,7 @@ function formatScores(scores: Record<string, number>) {
   return entries.map(([code, score]) => `${code}:${num(score)}`).join(' | ')
 }
 
-function stabilityLabel(stability?: Record<string, any>) {
+function stabilityLabel(stability?: BacktestSignalStability) {
   if (!stability || !Object.keys(stability).length) return '-'
   const parts: string[] = []
   const kept = Array.isArray(stability.kept) ? stability.kept : []

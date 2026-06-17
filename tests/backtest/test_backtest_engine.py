@@ -120,6 +120,33 @@ def test_rank_buffer_keeps_current_holding_when_still_near_top() -> None:
     assert target == {"510300": 1.0}
     assert stability["kept"] == ["510300"]
     assert stability["keep_reasons"]["510300"] == "rank_buffer:2<=2"
+    assert stability["raw_selected"] == ["512800"]
+    assert stability["final_selected"] == ["510300"]
+    assert stability["pre_skip_turnover"] == 0.0
+    assert stability["turnover"] == 0.0
+
+
+def test_min_holding_keeps_current_holding_without_rank_score() -> None:
+    engine = BacktestEngine()
+    signal = StrategySignal(
+        weights={"512800": 1.0},
+        scores={"512800": 0.12},
+        eligible=["512800", "510300"],
+    )
+
+    target, stability = engine._stabilize_target_weights(
+        signal=signal,
+        raw_target_weights={"512800": 1.0},
+        current_weights={"510300": 1.0},
+        holding_start_positions={"510300": 25},
+        position=30,
+        params={"min_holding_days": 20},
+    )
+
+    assert target == {"510300": 1.0}
+    assert stability["kept"] == ["510300"]
+    assert stability["keep_reasons"]["510300"] == "min_holding_days:5/20"
+    assert stability["final_selected"] == ["510300"]
 
 
 def test_trend_filter_can_require_fast_ma_above_slow_ma() -> None:
@@ -376,6 +403,7 @@ def test_rotation_buys_positive_momentum_and_charges_commission() -> None:
     assert {trade["code"] for trade in buy_trades} == {"510300"}
     assert result["metrics"]["trade_count"] > 0
     assert all(isclose(trade["commission"], trade["amount"] * 0.0005, rel_tol=1e-4) for trade in buy_trades)
+    assert result["diagnostics"]["return_attribution_cost_drag"] < 0
 
 
 def test_adaptive_regime_uses_defensive_asset_in_downtrend() -> None:
@@ -660,3 +688,5 @@ def test_return_attribution_reports_held_etf_contribution() -> None:
     assert by_code["510300"]["active_days"] > 0
     assert "512800" not in by_code or by_code["512800"]["active_days"] == 0
     assert "return_attribution_residual" in result["diagnostics"]
+    assert result["diagnostics"]["return_attribution_cost_drag"] == 0
+    assert "交易成本" in result["diagnostics"]["return_attribution_residual_reason"]

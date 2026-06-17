@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.routers.auth_db import get_current_user
 from app.core.database import get_mongo_db, get_redis_client
@@ -22,7 +22,7 @@ logger = logging.getLogger("webapi")
 class BackupRequest(BaseModel):
     """备份请求"""
     name: str
-    collections: List[str] = []  # 空列表表示备份所有集合
+    collections: List[str] = Field(default_factory=list)  # 空列表表示备份所有集合
 
 class ImportRequest(BaseModel):
     """导入请求"""
@@ -32,7 +32,7 @@ class ImportRequest(BaseModel):
 
 class ExportRequest(BaseModel):
     """导出请求"""
-    collections: List[str] = []  # 空列表表示导出所有集合
+    collections: List[str] = Field(default_factory=list)  # 空列表表示导出所有集合
     format: str = "json"  # json, csv
     sanitize: bool = False  # 是否脱敏（清空敏感字段，用于演示系统）
 

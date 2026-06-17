@@ -11,6 +11,48 @@ import re
 
 logger = logging.getLogger(__name__)
 
+
+NEWS_FAILURE_MARKERS = (
+    "实时新闻获取失败",
+    "所有可用的新闻源",
+    "无法获取",
+    "未找到相关新闻",
+    "错误信息",
+    "获取失败",
+    "API服务",
+    "新闻源均不可用",
+    "no news",
+    "failed",
+    "unavailable",
+)
+
+
+def is_usable_news_content(content: str) -> bool:
+    """Return True only for analyzable news, not transport/source failure text."""
+    if not content or len(str(content).strip()) < 50:
+        return False
+    normalized = str(content).strip().lower()
+    return not any(marker.lower() in normalized for marker in NEWS_FAILURE_MARKERS)
+
+
+def build_news_fetch_failure_report(company_name: str, ticker: str, raw_news: str = "") -> str:
+    detail = raw_news.strip() if raw_news else "所有新闻源均未返回可用新闻数据。"
+    return f"""# {company_name}（{ticker}）新闻数据获取失败
+
+## 数据状态
+
+本次新闻分析未能获取到可验证的新闻内容，因此不能据此判断“该股票没有新闻”。
+
+## 失败详情
+
+{detail}
+
+## 处理建议
+
+请检查新闻源连通性、API Key 配置、AKShare/东方财富接口可用性，以及本地 stock_news 缓存同步状态。修复数据源后建议重新运行新闻分析。
+"""
+
+
 class UnifiedNewsAnalyzer:
     """统一新闻分析器，整合所有新闻获取逻辑"""
     
@@ -67,20 +109,7 @@ class UnifiedNewsAnalyzer:
     @staticmethod
     def _is_usable_news_content(content: str) -> bool:
         """判断工具返回内容是否真的是可分析新闻，而不是失败提示。"""
-        if not content or len(content.strip()) < 50:
-            return False
-
-        failure_markers = (
-            "实时新闻获取失败",
-            "所有可用的新闻源",
-            "无法获取",
-            "未找到相关新闻",
-            "错误信息",
-            "获取失败",
-            "API服务",
-            "新闻源均不可用",
-        )
-        return not any(marker in content for marker in failure_markers)
+        return is_usable_news_content(content)
     
     def _identify_stock_type(self, stock_code: str) -> str:
         """识别股票类型"""

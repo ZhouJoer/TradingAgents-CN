@@ -20,6 +20,7 @@ models_pkg.__path__ = []
 industry_models_stub = types.ModuleType("app.models.industry_analysis")
 for name in (
     "DetailLevel",
+    "DISCOVERY_INSIGHT_CATEGORIES",
     "DiscoveryInsightItem",
     "IndustryDiscoveryInsights",
     "IndustryLogicSections",

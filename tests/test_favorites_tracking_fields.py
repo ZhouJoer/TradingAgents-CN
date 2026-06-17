@@ -48,6 +48,20 @@ class FavoritesTrackingFieldsTests(unittest.TestCase):
         self.assertFalse(service._sanitize_update_value("message_alert_enabled", None))
         self.assertIsNone(service._sanitize_update_value("target_price_low", None))
 
+    def test_sanitize_update_value_normalizes_tracking_payloads(self):
+        service = FavoritesService()
+
+        self.assertEqual(
+            service._sanitize_update_value("linked_report_ids", [" r1 ", "", "r1", "r2"]),
+            ["r1", "r2"],
+        )
+        self.assertEqual(service._sanitize_update_value("tags", [" 长期 ", "长期", "财报"]), ["长期", "财报"])
+        self.assertEqual(service._sanitize_update_value("target_price_low", "12.5"), 12.5)
+        self.assertIsNone(service._sanitize_update_value("target_price_high", "-1"))
+        self.assertIsNone(service._sanitize_update_value("next_review_date", ""))
+        self.assertEqual(service._sanitize_update_value("next_review_date", " 2026-06-30 "), "2026-06-30")
+        self.assertTrue(service._sanitize_update_value("message_alert_enabled", "1"))
+
 
 if __name__ == "__main__":
     unittest.main()

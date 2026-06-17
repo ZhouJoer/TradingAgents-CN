@@ -24,6 +24,15 @@ logger = logging.getLogger("webapi")
 # 股票名称缓存
 _stock_name_cache = {}
 
+
+async def _build_credibility_safely(db, report: Dict[str, Any]) -> Dict[str, Any]:
+    service = ReportCredibilityService(db)
+    try:
+        return await service.build(report)
+    except Exception as exc:
+        logger.warning("报告可信度生成失败，返回降级说明: %s", exc, exc_info=True)
+        return ReportCredibilityService.fallback(report, exc)
+
 def get_stock_name(stock_code: str) -> str:
     """
     获取股票名称
@@ -423,8 +432,7 @@ async def get_report_detail(
                 "tokens_used": doc.get("tokens_used", 0)
             }
 
-        credibility_service = ReportCredibilityService(db)
-        report["credibility"] = await credibility_service.build(report)
+        report["credibility"] = await _build_credibility_safely(db, report)
 
         return {
             "success": True,
@@ -537,8 +545,8 @@ async def download_report(
         if not doc:
             raise HTTPException(status_code=404, detail="报告不存在")
 
+        doc["credibility"] = await _build_credibility_safely(db, doc)
         credibility_service = ReportCredibilityService(db)
-        doc["credibility"] = await credibility_service.build(doc)
 
         stock_symbol = doc.get("stock_symbol", "unknown")
         analysis_date = doc.get("analysis_date", datetime.now().strftime("%Y-%m-%d"))

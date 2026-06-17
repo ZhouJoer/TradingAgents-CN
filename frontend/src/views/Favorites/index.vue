@@ -1084,16 +1084,37 @@ const fetchStockInfo = async () => {
   }
 }
 
-const normalizeReportIds = (ids: string[]) => {
-  return (ids || [])
+const normalizeStringList = (items: string[]) => {
+  const seen = new Set<string>()
+  return (items || [])
     .map(item => String(item || '').trim())
     .filter(Boolean)
+    .filter(item => {
+      if (seen.has(item)) return false
+      seen.add(item)
+      return true
+    })
+}
+
+const normalizeNumberOrNull = (value: number | null) => {
+  if (value === null || value === undefined) return null
+  const number = Number(value)
+  return Number.isFinite(number) && number >= 0 ? number : null
 }
 
 const normalizeFavoritePayload = (form: FavoriteFormState) => ({
   ...form,
+  tags: normalizeStringList(form.tags),
+  notes: form.notes.trim(),
+  watch_reason: form.watch_reason.trim(),
+  alert_price_high: normalizeNumberOrNull(form.alert_price_high),
+  alert_price_low: normalizeNumberOrNull(form.alert_price_low),
+  target_price_low: normalizeNumberOrNull(form.target_price_low),
+  target_price_high: normalizeNumberOrNull(form.target_price_high),
+  risk_reminder: form.risk_reminder.trim(),
   next_review_date: form.next_review_date || null,
-  linked_report_ids: normalizeReportIds(form.linked_report_ids)
+  linked_report_ids: normalizeStringList(form.linked_report_ids),
+  message_alert_enabled: Boolean(form.message_alert_enabled)
 })
 
 const handleAddFavorite = async () => {

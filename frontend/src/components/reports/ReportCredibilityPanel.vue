@@ -10,6 +10,16 @@
       </div>
     </template>
 
+    <el-alert
+      v-if="credibilityUnavailable"
+      class="credibility-alert"
+      title="可信度暂不可用"
+      :description="credibilityUnavailableReason"
+      type="warning"
+      show-icon
+      :closable="false"
+    />
+
     <div class="credibility-grid">
       <section class="credibility-section">
         <h4>
@@ -181,6 +191,8 @@ import { Calendar, Check, Cpu, DataAnalysis, Files, List, Warning } from '@eleme
 type FreshnessLevel = 'fresh' | 'stale' | 'unknown'
 
 type Credibility = {
+  unavailable?: boolean
+  error?: string
   data_freshness?: {
     analysis_date?: string
     generated_at?: string | null
@@ -248,8 +260,14 @@ const enabledSources = computed(() => dataSources.value.enabled_sources || [])
 const observedSources = computed(() => dataSources.value.observed_sources || [])
 const positiveFactors = computed(() => confidenceBasis.value.positive_factors || [])
 const limitingFactors = computed(() => confidenceBasis.value.limiting_factors || [])
+const credibilityUnavailable = computed(() => Boolean(credibility.value.unavailable))
+const credibilityUnavailableReason = computed(() => {
+  const limiting = limitingFactors.value[0]
+  return limiting || credibility.value.error || '可信度生成失败，报告主体仍可查看。'
+})
 
 const freshnessLabel = computed(() => {
+  if (credibilityUnavailable.value) return '可信度暂不可用'
   const value = dataFreshness.value.freshness_level
   if (value === 'fresh') return '数据较新'
   if (value === 'stale') return '可能过期'
@@ -257,6 +275,7 @@ const freshnessLabel = computed(() => {
 })
 
 const freshnessTagType = computed(() => {
+  if (credibilityUnavailable.value) return 'warning'
   const value = dataFreshness.value.freshness_level
   if (value === 'fresh') return 'success'
   if (value === 'stale') return 'warning'
@@ -329,6 +348,10 @@ const severityText = (severity?: string) => {
     gap: 8px;
     font-weight: 600;
   }
+}
+
+.credibility-alert {
+  margin-bottom: 16px;
 }
 
 .credibility-grid {

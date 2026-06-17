@@ -8,6 +8,15 @@ from datetime import datetime
 from enum import Enum
 
 
+DISCOVERY_INSIGHT_CATEGORIES = [
+    ("industry_bottlenecks", "产业瓶颈"),
+    ("non_consensus_targets", "非共识标的"),
+    ("financial_inflections", "财务拐点"),
+    ("red_team_counterpoints", "红队反证"),
+    ("future_catalysts", "未来催化事件"),
+]
+
+
 class DetailLevel(str, Enum):
     """已弃用：分析详细程度。当前流水线始终执行完整两阶段分析。"""
     BRIEF = "brief"      # 已弃用，仅保留向后兼容

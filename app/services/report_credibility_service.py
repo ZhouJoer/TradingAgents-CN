@@ -60,19 +60,24 @@ class ReportCredibilityService:
         self.db = db
 
     async def build(self, report: Dict[str, Any]) -> Dict[str, Any]:
-        stock_symbol = str(report.get("stock_symbol") or report.get("stock_code") or "").strip()
+        context = await self._load_context(report)
         reports = report.get("reports") or {}
 
-        quote_doc = await self._find_stock_doc("market_quotes", stock_symbol)
-        basic_doc = await self._find_stock_doc("stock_basic_info", stock_symbol)
-        financial_doc = await self._find_stock_doc("stock_financial_data", stock_symbol)
-        usage_records = await self._find_usage_records(report)
-        enabled_sources = await self._get_enabled_sources()
-
-        data_freshness = self._build_data_freshness(report, quote_doc, basic_doc, financial_doc)
-        data_sources = self._build_data_sources(report, enabled_sources, quote_doc, basic_doc, financial_doc)
+        data_freshness = self._build_data_freshness(
+            report,
+            context["quote_doc"],
+            context["basic_doc"],
+            context["financial_doc"],
+        )
+        data_sources = self._build_data_sources(
+            report,
+            context["enabled_sources"],
+            context["quote_doc"],
+            context["basic_doc"],
+            context["financial_doc"],
+        )
         missing_items = self._build_missing_items(report, reports)
-        model_usage = self._build_model_usage(report, usage_records)
+        model_usage = self._build_model_usage(report, context["usage_records"])
         confidence_basis = self._build_confidence_basis(report, data_freshness, data_sources, missing_items)
         counter_evidence = self._extract_counter_evidence(reports)
 
@@ -83,6 +88,58 @@ class ReportCredibilityService:
             "model_usage": model_usage,
             "confidence_basis": confidence_basis,
             "counter_evidence": counter_evidence,
+        }
+
+    async def _load_context(self, report: Dict[str, Any]) -> Dict[str, Any]:
+        stock_symbol = str(report.get("stock_symbol") or report.get("stock_code") or "").strip()
+        return {
+            "quote_doc": await self._find_stock_doc("market_quotes", stock_symbol),
+            "basic_doc": await self._find_stock_doc("stock_basic_info", stock_symbol),
+            "financial_doc": await self._find_stock_doc("stock_financial_data", stock_symbol),
+            "usage_records": await self._find_usage_records(report),
+            "enabled_sources": await self._get_enabled_sources(),
+        }
+
+    @staticmethod
+    def fallback(report: Dict[str, Any], error: Any = None) -> Dict[str, Any]:
+        reason = "可信度生成失败，报告主体仍可查看。"
+        if error:
+            reason = f"{reason} 原因: {type(error).__name__}"
+        return {
+            "unavailable": True,
+            "error": str(error) if error else "",
+            "data_freshness": {
+                "analysis_date": str(report.get("analysis_date") or ""),
+                "generated_at": None,
+                "market_quote_updated_at": None,
+                "stock_basic_updated_at": None,
+                "financial_updated_at": None,
+                "freshness_level": "unknown",
+                "notes": [reason],
+            },
+            "data_sources": {
+                "report_source": report.get("source") or "unknown",
+                "enabled_sources": [],
+                "observed_sources": [],
+                "actual_source_recorded": False,
+            },
+            "missing_items": [],
+            "model_usage": {
+                "model_info": report.get("model_info") or "Unknown",
+                "tokens_used": report.get("tokens_used"),
+                "input_tokens": None,
+                "output_tokens": None,
+                "cost": None,
+                "currency": "CNY",
+                "cost_source": "unavailable",
+            },
+            "confidence_basis": {
+                "confidence_score": None,
+                "label": "未知",
+                "positive_factors": [],
+                "limiting_factors": [reason],
+            },
+            "counter_evidence": [],
         }
 
     def format_markdown(self, credibility: Optional[Dict[str, Any]]) -> str:
@@ -542,3 +599,8 @@ class ReportCredibilityService:
             return "未知"
         normalized = self._normalize_score(float(score))
         return f"{normalized:.1f}%" if normalized is not None else "未知"
+
+
+def format_credibility_markdown(credibility: Optional[Dict[str, Any]]) -> str:
+    formatter = object.__new__(ReportCredibilityService)
+    return ReportCredibilityService.format_markdown(formatter, credibility)
