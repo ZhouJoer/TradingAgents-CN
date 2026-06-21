@@ -33,6 +33,10 @@ from app.services.memory_state_manager import get_memory_state_manager, TaskStat
 from app.services.redis_progress_tracker import RedisProgressTracker, get_progress_by_id
 from app.services.progress_log_handler import register_analysis_tracker, unregister_analysis_tracker
 from app.services.history_review_context_service import HistoryReviewContextService
+from tradingagents.utils.report_guard import (
+    sanitize_report_content,
+    sanitize_report_modules,
+)
 
 # 股票基础信息获取（用于补充显示名称）
 try:
@@ -1751,6 +1755,8 @@ class SimpleAnalysisService:
                 except Exception as fallback_error:
                     logger.warning(f"⚠️ 降级提取也失败: {fallback_error}")
 
+            reports = sanitize_report_modules(reports)
+
             # 🔥 格式化decision数据（参考web目录的实现）
             formatted_decision = {}
             try:
@@ -1874,6 +1880,7 @@ class SimpleAnalysisService:
             model_info = decision.get('model_info', 'Unknown') if isinstance(decision, dict) else 'Unknown'
             if review_context_report:
                 reports["review_context_report"] = review_context_report
+            reports = sanitize_report_modules(reports)
 
             # 构建结果
             result = {
@@ -2620,6 +2627,8 @@ class SimpleAnalysisService:
                         except Exception as fallback_error:
                             logger.warning(f"⚠️ 降级提取也失败: {fallback_error}")
 
+            reports = sanitize_report_modules(reports)
+
             # 🔥 根据股票代码推断市场类型
             from tradingagents.utils.stock_utils import StockUtils
             market_info = StockUtils.get_market_info(stock_symbol)
@@ -2927,9 +2936,9 @@ class SimpleAnalysisService:
                         # 提取模块内容
                         module_content = state[state_key]
                         if isinstance(module_content, str):
-                            report_content = module_content
+                            report_content = sanitize_report_content(module_content)
                         else:
-                            report_content = str(module_content)
+                            report_content = sanitize_report_content(str(module_content))
 
                         # 保存到文件 - 使用web目录的文件名
                         file_path = reports_dir / module_info['filename']

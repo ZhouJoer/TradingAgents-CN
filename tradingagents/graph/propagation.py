@@ -24,8 +24,8 @@ class Propagator:
         analysis_request = f"请对股票 {company_name} 进行全面分析，交易日期为 {trade_date}。"
         if review_context:
             analysis_request += (
-                "\n\n本次启用了历史报告复盘。请在关键决策节点结合 "
-                "state.history_review_report，识别观点变化、已验证假设和仍需验证的问题；"
+                "\n\n本次启用了历史报告复盘。历史复盘内容已由系统注入给需要的"
+                "研究、交易和决策节点；不要尝试调用或编造任何历史复盘工具。"
                 "不要把历史结论直接当作本次投资建议。请在交易计划和最终决策中单列"
                 "“历史报告复盘”小节，说明历史判断哪些被当前信息支持、削弱或推翻。"
             )

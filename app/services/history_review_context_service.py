@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from tradingagents.utils.report_guard import sanitize_report_modules
+
 try:
     from tradingagents.utils.logging_init import get_logger
 
@@ -408,7 +410,7 @@ class HistoryReviewContextService:
         ]
         for candidate in candidates:
             if isinstance(candidate, dict) and candidate:
-                return candidate
+                return sanitize_report_modules(candidate)
         return {}
 
     def _extract_decision_fields(self, text: str) -> Dict[str, str]:

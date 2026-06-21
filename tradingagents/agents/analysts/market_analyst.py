@@ -13,6 +13,76 @@ logger = get_logger("default")
 # 导入Google工具调用处理器
 from tradingagents.agents.utils.google_tool_handler import GoogleToolCallHandler
 from tradingagents.agents.utils.instrument_utils import build_instrument_context
+from tradingagents.utils.report_guard import (
+    INVALID_REPORT_PLACEHOLDER,
+    is_tool_call_artifact,
+)
+
+
+def _recover_market_report_from_default_tool(
+    llm,
+    market_tool,
+    ticker: str,
+    current_date: str,
+    company_name: str,
+    market_info: dict,
+    artifact_content: str,
+    reason: str,
+) -> str:
+    """Recover when a provider serialized tool calls as plain text."""
+    try:
+        logger.warning(
+            "[market_analyst] Raw tool-call artifact detected in %s; "
+            "fetching market data directly and regenerating report.",
+            reason,
+        )
+        market_data = market_tool.invoke(
+            {
+                "ticker": ticker,
+                "start_date": current_date,
+                "end_date": current_date,
+            }
+        )
+
+        from langchain_core.messages import HumanMessage
+
+        prompt = f"""The previous model response was a raw tool-call protocol block, not a report.
+Do not include tool calls, DSML/XML tags, JSON tool_calls, or invocation syntax in the answer.
+
+Write the final market and technical analysis report in Chinese using the data below.
+
+Target:
+- Company: {company_name}
+- Ticker: {ticker}
+- Market: {market_info.get('market_name', '')}
+- Currency: {market_info.get('currency_name', '')} ({market_info.get('currency_symbol', '')})
+- Analysis date: {current_date}
+
+Required Markdown sections:
+1. Stock basic information
+2. Technical indicators analysis
+3. Price trend analysis
+4. Investment suggestion and risk notes
+
+Market data:
+{market_data}
+
+Raw artifact for debugging only; do not repeat it:
+{str(artifact_content)[:1000]}
+"""
+        final_result = llm.invoke([HumanMessage(content=prompt)])
+        report = getattr(final_result, "content", "") or ""
+
+        if is_tool_call_artifact(report) or not str(report).strip():
+            logger.warning(
+                "[market_analyst] Recovery generation still returned invalid report content."
+            )
+            return INVALID_REPORT_PLACEHOLDER
+
+        return report
+    except Exception as exc:
+        logger.error("[market_analyst] Recovery generation failed: %s", exc, exc_info=True)
+        return INVALID_REPORT_PLACEHOLDER
 
 
 def _get_company_name(ticker: str, market_info: dict) -> str:
@@ -280,6 +350,18 @@ def create_market_analyst(llm, toolkit):
                 analyst_name="市场分析师"
             )
 
+            if is_tool_call_artifact(report):
+                report = _recover_market_report_from_default_tool(
+                    llm=llm,
+                    market_tool=toolkit.get_stock_market_data_unified,
+                    ticker=ticker,
+                    current_date=current_date,
+                    company_name=company_name,
+                    market_info=market_info,
+                    artifact_content=report,
+                    reason="google handler report",
+                )
+
             # 🔧 更新工具调用计数器
             return {
                 "messages": [result],
@@ -291,28 +373,40 @@ def create_market_analyst(llm, toolkit):
             logger.info(f"📊 [市场分析师] 非Google模型 ({llm.__class__.__name__})，使用标准处理逻辑")
             logger.info(f"📊 [市场分析师] 检查LLM返回结果...")
             logger.info(f"📊 [市场分析师] - 是否有tool_calls: {hasattr(result, 'tool_calls')}")
+            tool_calls = getattr(result, 'tool_calls', []) or []
             if hasattr(result, 'tool_calls'):
-                logger.info(f"📊 [市场分析师] - tool_calls数量: {len(result.tool_calls)}")
-                if result.tool_calls:
-                    for i, tc in enumerate(result.tool_calls):
+                logger.info(f"📊 [市场分析师] - tool_calls数量: {len(tool_calls)}")
+                if tool_calls:
+                    for i, tc in enumerate(tool_calls):
                         logger.info(f"📊 [市场分析师] - tool_call[{i}]: {tc.get('name', 'unknown')}")
 
             # 处理市场分析报告
-            if len(result.tool_calls) == 0:
+            if len(tool_calls) == 0:
                 # 没有工具调用，直接使用LLM的回复
-                report = result.content
+                report = getattr(result, 'content', '') or ''
+                if is_tool_call_artifact(report):
+                    report = _recover_market_report_from_default_tool(
+                        llm=llm,
+                        market_tool=toolkit.get_stock_market_data_unified,
+                        ticker=ticker,
+                        current_date=current_date,
+                        company_name=company_name,
+                        market_info=market_info,
+                        artifact_content=report,
+                        reason="initial response",
+                    )
                 logger.info(f"📊 [市场分析师] ✅ 直接回复（无工具调用），长度: {len(report)}")
                 logger.debug(f"📊 [DEBUG] 直接回复内容预览: {report[:200]}...")
             else:
                 # 有工具调用，执行工具并生成完整分析报告
-                logger.info(f"📊 [市场分析师] 🔧 检测到工具调用: {[call.get('name', 'unknown') for call in result.tool_calls]}")
+                logger.info(f"📊 [市场分析师] 🔧 检测到工具调用: {[call.get('name', 'unknown') for call in tool_calls]}")
 
                 try:
                     # 执行工具调用
                     from langchain_core.messages import ToolMessage, HumanMessage
 
                     tool_messages = []
-                    for tool_call in result.tool_calls:
+                    for tool_call in tool_calls:
                         tool_name = tool_call.get('name')
                         tool_args = tool_call.get('args', {})
                         tool_id = tool_call.get('id')
@@ -481,6 +575,17 @@ def create_market_analyst(llm, toolkit):
                     # 生成最终分析报告
                     final_result = llm.invoke(messages)
                     report = final_result.content
+                    if is_tool_call_artifact(report):
+                        report = _recover_market_report_from_default_tool(
+                            llm=llm,
+                            market_tool=toolkit.get_stock_market_data_unified,
+                            ticker=ticker,
+                            current_date=current_date,
+                            company_name=company_name,
+                            market_info=market_info,
+                            artifact_content=report,
+                            reason="final report response",
+                        )
 
                     logger.info(f"📊 [市场分析师] 生成完整分析报告，长度: {len(report)}")
 
@@ -497,7 +602,7 @@ def create_market_analyst(llm, toolkit):
                     traceback.print_exc()
 
                     # 降级处理：返回工具调用信息
-                    report = f"市场分析师调用了工具但分析生成失败: {[call.get('name', 'unknown') for call in result.tool_calls]}"
+                    report = f"市场分析师调用了工具但分析生成失败: {[call.get('name', 'unknown') for call in tool_calls]}"
 
                     # 🔧 更新工具调用计数器
                     return {

@@ -1,6 +1,7 @@
 # TradingAgents/graph/conditional_logic.py
 
 from tradingagents.agents.utils.agent_states import AgentState
+from tradingagents.utils.report_guard import is_valid_report_text
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
@@ -48,7 +49,7 @@ class ConditionalLogic:
             return "Msg Clear Market"
 
         # 如果已经有报告内容，说明分析已完成，不再循环
-        if market_report and len(market_report) > 100:
+        if is_valid_report_text(market_report):
             logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Msg Clear Market")
             return "Msg Clear Market"
 
@@ -86,7 +87,7 @@ class ConditionalLogic:
             return "Msg Clear Social"
 
         # 如果已经有报告内容，说明分析已完成，不再循环
-        if sentiment_report and len(sentiment_report) > 100:
+        if is_valid_report_text(sentiment_report):
             logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Msg Clear Social")
             return "Msg Clear Social"
 
@@ -124,7 +125,7 @@ class ConditionalLogic:
             return "Msg Clear News"
 
         # 如果已经有报告内容，说明分析已完成，不再循环
-        if news_report and len(news_report) > 100:
+        if is_valid_report_text(news_report):
             logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Msg Clear News")
             return "Msg Clear News"
 
@@ -180,7 +181,7 @@ class ConditionalLogic:
             logger.info(f"🔧 [条件判断] 无tool_calls属性")
 
         # ✅ 优先级1: 如果已经有报告内容，说明分析已完成，不再循环
-        if fundamentals_report and len(fundamentals_report) > 100:
+        if is_valid_report_text(fundamentals_report):
             logger.info(f"🔀 [条件判断] ✅ 报告已完成，返回: Msg Clear Fundamentals")
             return "Msg Clear Fundamentals"
 

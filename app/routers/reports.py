@@ -17,6 +17,10 @@ from ..core.response import ok
 from ..services.report_credibility_service import ReportCredibilityService
 from ..services.report_review_service import ReportReviewService
 from ..utils.timezone import to_config_tz
+from tradingagents.utils.report_guard import (
+    sanitize_report_content,
+    sanitize_report_modules,
+)
 import logging
 
 logger = logging.getLogger("webapi")
@@ -432,6 +436,7 @@ async def get_report_detail(
                 "tokens_used": doc.get("tokens_used", 0)
             }
 
+        report["reports"] = sanitize_report_modules(report.get("reports", {}))
         report["credibility"] = await _build_credibility_safely(db, report)
 
         return {
@@ -470,7 +475,7 @@ async def get_report_module_content(
         if module not in reports:
             raise HTTPException(status_code=404, detail=f"模块 {module} 不存在")
 
-        content = reports[module]
+        content = sanitize_report_content(reports[module])
 
         return {
             "success": True,
@@ -545,6 +550,7 @@ async def download_report(
         if not doc:
             raise HTTPException(status_code=404, detail="报告不存在")
 
+        doc["reports"] = sanitize_report_modules(doc.get("reports", {}))
         doc["credibility"] = await _build_credibility_safely(db, doc)
         credibility_service = ReportCredibilityService(db)
 
