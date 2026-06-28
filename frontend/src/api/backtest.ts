@@ -136,6 +136,11 @@ export interface ETFUniverseItem {
   code: string
   name: string
   group: string
+  active?: boolean
+  source?: string
+  tags?: string[]
+  note?: string
+  is_default?: boolean
 }
 
 export interface MiningRun {
@@ -192,11 +197,22 @@ export interface MiningExplanation {
 
 export interface MiningCandidate {
   candidate_id: string
+  name?: string
   strategy_id: string
   params: Record<string, any>
+  universe?: string[]
   score: number
   metrics: BacktestMetrics
   evaluation?: Record<string, any>
+  status?: string
+  tags?: string[]
+  note?: string
+  favorite?: boolean
+  source?: string
+  applied_count?: number
+  last_applied_at?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export const backtestApi = {
@@ -205,6 +221,18 @@ export const backtestApi = {
   },
   async getETFUniverse() {
     return ApiClient.get<{ items: ETFUniverseItem[] }>('/api/backtest/etf-universe')
+  },
+  async saveETFUniverseItem(data: Record<string, any>) {
+    return ApiClient.post<ETFUniverseItem>('/api/backtest/etf-universe', data, { showLoading: true })
+  },
+  async updateETFUniverseItem(code: string, data: Record<string, any>) {
+    return ApiClient.patch<ETFUniverseItem>(`/api/backtest/etf-universe/${code}`, data, { showLoading: true })
+  },
+  async refreshETFBasic(source = 'akshare') {
+    return ApiClient.post<{ source: string; saved: number }>(`/api/backtest/etf-universe/refresh-basic`, null, { params: { source }, showLoading: true })
+  },
+  async searchETF(q = '', limit = 50) {
+    return ApiClient.get<{ items: ETFUniverseItem[] }>('/api/backtest/etf-search', { params: { q, limit } })
   },
   async run(data: Record<string, any>) {
     return ApiClient.post<BacktestResult>('/api/backtest/run', data, { showLoading: true })
@@ -221,10 +249,37 @@ export const backtestApi = {
   async getMiningRun(runId: string) {
     return ApiClient.get<MiningRun>(`/api/backtest/mine/${runId}`)
   },
-  async listCandidates(limit = 100) {
-    return ApiClient.get<{ items: MiningCandidate[] }>('/api/backtest/candidates', { params: { limit } })
+  async getDiscoveredAdaptiveTopKPack() {
+    return ApiClient.get<Record<string, any>>('/api/backtest/strategy-packs/discovered/adaptive-topk-gap02')
+  },
+  async listCandidates(params: number | Record<string, any> = 100) {
+    const query = typeof params === 'number' ? { limit: params } : params
+    return ApiClient.get<{ items: MiningCandidate[] }>('/api/backtest/candidates', { params: query })
   },
   async saveCandidate(data: Record<string, any>) {
     return ApiClient.post<MiningCandidate>('/api/backtest/candidates', data, { showLoading: true })
+  },
+  async saveDiscoveredAdaptiveTopK(data: Record<string, any> = {}) {
+    return ApiClient.post<MiningCandidate>('/api/backtest/candidates/discovered/adaptive-topk-gap02', data, { showLoading: true })
+  },
+  async updateCandidate(candidateId: string, data: Record<string, any>) {
+    return ApiClient.patch<MiningCandidate>(`/api/backtest/candidates/${candidateId}`, data, { showLoading: true })
+  },
+  async deleteCandidate(candidateId: string) {
+    return ApiClient.delete<{ deleted: boolean }>(`/api/backtest/candidates/${candidateId}`, { showLoading: true })
+  },
+  async applyCandidate(candidateId: string) {
+    return ApiClient.post<{ candidate: MiningCandidate; strategy_id: string; params: Record<string, any>; universe: string[] }>(
+      `/api/backtest/candidates/${candidateId}/apply`,
+      null,
+      { showLoading: true }
+    )
+  },
+  async createPaperTrackerFromCandidate(candidateId: string, data: Record<string, any> = {}) {
+    return ApiClient.post<{ candidate: MiningCandidate; tracker: Record<string, any>; run?: Record<string, any> | null }>(
+      `/api/backtest/candidates/${candidateId}/paper-tracker`,
+      data,
+      { showLoading: true }
+    )
   }
 }

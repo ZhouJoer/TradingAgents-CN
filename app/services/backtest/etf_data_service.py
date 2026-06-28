@@ -179,9 +179,9 @@ class ETFDataService:
             result.append(merged)
         return result
 
-    async def refresh_basic_info(self) -> int:
+    async def refresh_basic_info(self, source: str = "akshare") -> int:
         await self.ensure_indexes()
-        rows = await asyncio.to_thread(self._fetch_basic_info)
+        rows = await asyncio.to_thread(self._fetch_basic_info, source)
         if not rows:
             return 0
         now = datetime.utcnow()
@@ -437,7 +437,9 @@ class ETFDataService:
             return False
         return end_dt - latest_dt <= timedelta(days=END_DATE_TOLERANCE_DAYS)
 
-    def _fetch_basic_info(self) -> List[Dict[str, Any]]:
+    def _fetch_basic_info(self, source: str = "akshare") -> List[Dict[str, Any]]:
+        if source == "tushare":
+            return self._fetch_basic_info_tushare()
         try:
             import akshare as ak
 
@@ -465,6 +467,39 @@ class ETFDataService:
             return rows
         except Exception as exc:
             logger.warning("Failed to fetch ETF basic info: %s", exc)
+            return []
+
+    def _fetch_basic_info_tushare(self) -> List[Dict[str, Any]]:
+        try:
+            from app.core.config import settings
+            import tushare as ts
+
+            if settings.TUSHARE_TOKEN:
+                ts.set_token(settings.TUSHARE_TOKEN)
+            pro = ts.pro_api()
+            df = pro.fund_basic(market="E")
+            if df is None or df.empty:
+                return []
+            rows: List[Dict[str, Any]] = []
+            for _, row in df.iterrows():
+                ts_code = str(row.get("ts_code", "")).strip()
+                code = ts_code.split(".", 1)[0].zfill(6)
+                if not code.isdigit():
+                    continue
+                rows.append(
+                    {
+                        "code": code,
+                        "name": str(row.get("name", "")),
+                        "fund_type": str(row.get("fund_type", "")),
+                        "management": str(row.get("management", "")),
+                        "custodian": str(row.get("custodian", "")),
+                        "found_date": _format_date(row.get("found_date")) if row.get("found_date") else None,
+                        "source": "tushare_fund_basic",
+                    }
+                )
+            return rows
+        except Exception as exc:
+            logger.warning("Failed to fetch ETF basic info from tushare: %s", exc)
             return []
 
     def _fetch_history(self, code: str, start_date: str, end_date: str, adjust: str) -> List[Dict[str, Any]]:

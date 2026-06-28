@@ -1,0 +1,62 @@
+{
+  "pack_id": "industry_momentum_enhanced_adaptive_topk_gap02",
+  "version": "2026-06-28",
+  "name": "行业动量增强 · 自适应 Top2 gap=0.02",
+  "strategy_id": "industry_momentum_enhanced",
+  "source": "codex_discovery",
+  "params": {
+    "rebalance_frequency": "monthly",
+    "top_k": 2,
+    "momentum_windows": [40, 120, 250],
+    "momentum_weights": [0.3, 0.5, 0.2],
+    "absolute_window": 60,
+    "trend_fast_ma": 20,
+    "trend_ma": 120,
+    "vol_window": 60,
+    "vol_penalty": 0.03,
+    "adaptive_top_k": true,
+    "top_k_score_gap": 0.02,
+    "empty_threshold": "trend_filter",
+    "cash_entry_mode": "daily_when_cash"
+  },
+  "research_period": {
+    "start_date": "2019-01-01",
+    "end_date": "2026-06-18",
+    "adjust": "qfq"
+  },
+  "cost": {
+    "commission_bps": 5,
+    "slippage_bps": 5
+  },
+  "metrics": {
+    "total_return": 5.114146,
+    "annual_return": 0.287063,
+    "max_drawdown": -0.354245,
+    "calmar": 0.810352,
+    "sharpe": 0.946459,
+    "trade_count": 123,
+    "avg_turnover": 0.842643,
+    "commission_ratio": 0.102873,
+    "excess_return": 4.199188
+  },
+  "comparison": {
+    "default_top1_total_return": 5.251593,
+    "fixed_top2_total_return": 2.269529,
+    "hybrid_gap02_total_return": 5.114146,
+    "top2_signal_count": 23,
+    "signal_count": 91,
+    "entry_offset_return_range": [5.114146, 5.208143],
+    "entry_offset_calmar_range": [0.810352, 0.818086]
+  },
+  "explanation": {
+    "rule": "最多持有 2 个 ETF；当第一名和第二名综合动量分差 <= 0.02 时等权持有 top2，否则只持有 top1。",
+    "why_user_mining_may_be_lower": [
+      "自动稳健挖掘看的是训练/验证/样本外和 walk-forward，不等于 2019-2026 全周期回测收益。",
+      "自动稳健挖掘会做 2 倍成本压力测试和回撤/稳定性过滤，分数会惩罚高收益但不稳定的参数。",
+      "随机挖掘有 max_trials 限制；搜索空间包含多策略、多窗口、多阈值，不保证命中这组固定参数。",
+      "如果回测日期、ETF 池、复权方式或费用不同，收益口径会明显不同。"
+    ],
+    "risk": "这组参数收益接近默认 top1、集中度更低，但没有超过默认 top1；历史回测不代表未来表现。"
+  },
+  "tags": ["discovered", "adaptive_top_k", "paper_ready"]
+}

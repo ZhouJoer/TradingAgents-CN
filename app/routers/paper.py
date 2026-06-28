@@ -8,6 +8,7 @@ import re
 from app.routers.auth_db import get_current_user
 from app.core.database import get_mongo_db
 from app.core.response import ok
+from app.services.paper_strategy_tracker_service import PaperStrategyTrackerService
 
 router = APIRouter(prefix="/paper", tags=["paper"])
 logger = logging.getLogger("webapi")
@@ -28,6 +29,41 @@ class PlaceOrderRequest(BaseModel):
     market: Optional[str] = Field(None, description="市场类型 (CN/HK/US)，不传则自动识别")
     # 可选：关联的分析ID，便于从分析页面一键下单后追踪
     analysis_id: Optional[str] = None
+
+
+class StrategyTrackerCreateRequest(BaseModel):
+    name: Optional[str] = None
+    strategy_id: str
+    params: Dict[str, Any] = Field(default_factory=dict)
+    universe: Optional[List[str]] = None
+    candidate_id: Optional[str] = None
+    start_date: Optional[str] = None
+    tracking_start_date: Optional[str] = None
+    open_policy: str = Field(default="next_signal", pattern="^(next_signal|sync_current)$")
+    initial_cash: float = Field(default=1_000_000.0, gt=0)
+    commission_bps: float = Field(default=5.0, ge=0)
+    slippage_bps: float = Field(default=5.0, ge=0)
+    adjust: str = Field(default="qfq", pattern="^(qfq|hfq|none)$")
+    status: str = "active"
+
+
+class StrategyTrackerUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None
+    params: Optional[Dict[str, Any]] = None
+    universe: Optional[List[str]] = None
+    candidate_id: Optional[str] = None
+    start_date: Optional[str] = None
+    tracking_start_date: Optional[str] = None
+    open_policy: Optional[str] = Field(default=None, pattern="^(next_signal|sync_current)$")
+    initial_cash: Optional[float] = Field(default=None, gt=0)
+    commission_bps: Optional[float] = Field(default=None, ge=0)
+    slippage_bps: Optional[float] = Field(default=None, ge=0)
+    adjust: Optional[str] = Field(default=None, pattern="^(qfq|hfq|none)$")
+
+
+def _tracker_service() -> PaperStrategyTrackerService:
+    return PaperStrategyTrackerService(get_mongo_db())
 
 
 def _detect_market_and_code(code: str) -> Tuple[str, str]:
@@ -528,6 +564,71 @@ async def place_order(payload: PlaceOrderRequest, current_user: dict = Depends(g
     await db["paper_trades"].insert_one(trade_doc)
 
     return ok({"order": {k: v for k, v in order_doc.items() if k != "_id"}})
+
+
+@router.get("/strategy-trackers", response_model=dict)
+async def list_strategy_trackers(
+    include_paused: bool = Query(True),
+    current_user: dict = Depends(get_current_user),
+):
+    service = _tracker_service()
+    return ok({"items": await service.list_trackers(current_user["id"], include_paused=include_paused)})
+
+
+@router.post("/strategy-trackers", response_model=dict)
+async def create_strategy_tracker(
+    payload: StrategyTrackerCreateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    service = _tracker_service()
+    try:
+        return ok(await service.create_tracker(current_user["id"], payload.model_dump()))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/strategy-trackers/{tracker_id}", response_model=dict)
+async def get_strategy_tracker(tracker_id: str, current_user: dict = Depends(get_current_user)):
+    service = _tracker_service()
+    tracker = await service.get_tracker(tracker_id, current_user["id"])
+    if not tracker:
+        raise HTTPException(status_code=404, detail="Strategy tracker not found")
+    return ok(tracker)
+
+
+@router.patch("/strategy-trackers/{tracker_id}", response_model=dict)
+async def update_strategy_tracker(
+    tracker_id: str,
+    payload: StrategyTrackerUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    service = _tracker_service()
+    try:
+        return ok(await service.update_tracker(tracker_id, current_user["id"], payload.model_dump(exclude_unset=True)))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.delete("/strategy-trackers/{tracker_id}", response_model=dict)
+async def delete_strategy_tracker(tracker_id: str, current_user: dict = Depends(get_current_user)):
+    service = _tracker_service()
+    deleted = await service.delete_tracker(tracker_id, current_user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Strategy tracker not found")
+    return ok({"deleted": True})
+
+
+@router.post("/strategy-trackers/{tracker_id}/run", response_model=dict)
+async def run_strategy_tracker(
+    tracker_id: str,
+    force: bool = Query(False),
+    current_user: dict = Depends(get_current_user),
+):
+    service = _tracker_service()
+    try:
+        return ok(await service.run_tracker(tracker_id, current_user["id"], force=force))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.get("/positions", response_model=dict)

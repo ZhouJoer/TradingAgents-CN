@@ -153,6 +153,96 @@
           </el-table>
         </el-card>
 
+        <el-card shadow="hover" class="trackers-card" style="margin-top:16px">
+          <template #header>
+            <div class="card-hd">
+              策略跟踪
+              <span style="margin-left: 8px; font-size: 12px; color: #909399; font-weight: normal">
+                ({{ strategyTrackers.length }} 个独立账本)
+              </span>
+            </div>
+          </template>
+          <el-table :data="strategyTrackers" size="small" v-loading="loading.trackers">
+            <el-table-column type="expand" width="42">
+              <template #default="{ row }">
+                <div class="tracker-detail">
+                  <div class="tracker-detail-head">
+                    <strong>持仓明细</strong>
+                    <span>{{ trackerPositionCount(row) ? `${trackerPositionCount(row)} 个 ETF` : '暂无持仓' }}</span>
+                    <span>开始：{{ row.tracking_start_date || '-' }}</span>
+                    <span>开仓：{{ trackerOpenPolicyLabel(row) }}</span>
+                    <span v-if="row.first_open_trade_date">首笔：{{ row.first_open_trade_date }}</span>
+                    <span v-if="row.last_signal">最近信号：{{ row.last_signal.execute_date || row.last_signal.date || '-' }}</span>
+                  </div>
+                  <el-table
+                    :data="trackerPositionRows(row)"
+                    size="small"
+                    border
+                    empty-text="暂无持仓；运行策略跟踪后会显示调仓结果"
+                  >
+                    <el-table-column prop="code" label="代码" width="110" />
+                    <el-table-column label="数量" width="120">
+                      <template #default="{ row: pos }">{{ Number(pos.quantity || 0).toFixed(4) }}</template>
+                    </el-table-column>
+                    <el-table-column label="均价" width="120">
+                      <template #default="{ row: pos }">¥{{ fmtPrice(pos.avg_cost) }}</template>
+                    </el-table-column>
+                    <el-table-column label="成本金额" width="130">
+                      <template #default="{ row: pos }">¥{{ fmtAmount(pos.cost_amount) }}</template>
+                    </el-table-column>
+                    <el-table-column label="目标权重" width="120">
+                      <template #default="{ row: pos }">{{ fmtPercent(pos.target_weight) }}</template>
+                    </el-table-column>
+                  </el-table>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="名称" min-width="180">
+              <template #default="{ row }">
+                <strong>{{ row.name }}</strong>
+                <div style="color:#909399;font-size:12px">{{ row.strategy_id }}</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="权益" width="110">
+              <template #default="{ row }">¥{{ fmtAmount(row.last_equity || row.initial_cash) }}</template>
+            </el-table-column>
+            <el-table-column label="现金" width="110">
+              <template #default="{ row }">¥{{ fmtAmount(row.cash) }}</template>
+            </el-table-column>
+            <el-table-column label="持仓" width="90">
+              <template #default="{ row }">
+                <span>{{ trackerPositionCount(row) }}</span>
+                <span v-if="trackerPositionCount(row)" class="tracker-expand-hint">展开</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="最近运行" width="160">
+              <template #default="{ row }">{{ row.last_run_at ? formatDateTime(row.last_run_at) : '-' }}</template>
+            </el-table-column>
+            <el-table-column label="回放" width="130">
+              <template #default="{ row }">
+                <el-tag v-if="row.pending_replay_date" type="warning" size="small">
+                  待数据 {{ row.pending_replay_date }}
+                </el-tag>
+                <el-tag v-else-if="row.last_replay_status === 'waiting_signal'" type="info" size="small">
+                  待新信号
+                </el-tag>
+                <span v-else>{{ row.last_processed_trade_date || '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="启用" width="80">
+              <template #default="{ row }">
+                <el-switch :model-value="row.status === 'active'" @change="(value) => toggleStrategyTracker(row, Boolean(value))" />
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" fixed="right">
+              <template #default="{ row }">
+                <el-button size="small" type="primary" link :icon="Refresh" @click="runStrategyTracker(row)">运行</el-button>
+                <el-button size="small" type="danger" link :icon="Delete" @click="deleteStrategyTracker(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
         <el-card shadow="hover" class="orders-card" style="margin-top:16px">
           <template #header>
             <div class="card-hd">
@@ -261,7 +351,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CreditCard, Refresh, Plus, Delete } from '@element-plus/icons-vue'
-import { paperApi } from '@/api/paper'
+import { paperApi, type StrategyTracker } from '@/api/paper'
 import { analysisApi } from '@/api/analysis'
 import { stocksApi } from '@/api/stocks'
 import { formatDateTime } from '@/utils/datetime'
@@ -274,7 +364,8 @@ const router = useRouter()
 const account = ref<any | null>(null)
 const positions = ref<any[]>([])
 const orders = ref<any[]>([])
-const loading = ref({ account: false, positions: false, orders: false })
+const strategyTrackers = ref<StrategyTracker[]>([])
+const loading = ref({ account: false, positions: false, orders: false, trackers: false })
 
 const orderDialog = ref(false)
 const order = ref({ side: 'buy', code: '', qty: 100 })
@@ -311,6 +402,10 @@ function fmtPrice(n: number | null | undefined) {
 function fmtAmount(n: number | null | undefined) {
   if (n == null || Number.isNaN(n as any)) return '-'
   return Number(n).toFixed(2)
+}
+function fmtPercent(n: number | null | undefined) {
+  if (n == null || Number.isNaN(n as any)) return '-'
+  return `${(Number(n) * 100).toFixed(2)}%`
 }
 
 // 获取货币符号
@@ -400,6 +495,79 @@ async function fetchOrders() {
   }
 }
 
+async function fetchStrategyTrackers() {
+  try {
+    loading.value.trackers = true
+    const res = await paperApi.listStrategyTrackers(true)
+    if (res.success) strategyTrackers.value = res.data.items || []
+  } catch (e: any) {
+    ElMessage.error(e?.message || '获取策略跟踪失败')
+  } finally {
+    loading.value.trackers = false
+  }
+}
+
+function trackerPositionCount(row: StrategyTracker) {
+  return Object.keys(row.positions || {}).length
+}
+
+function trackerOpenPolicyLabel(row: StrategyTracker) {
+  return row.open_policy === 'sync_current' ? '同步当前仓位' : '下个新信号'
+}
+
+function trackerPositionRows(row: StrategyTracker) {
+  const targets = row.last_signal?.target_weights || {}
+  return Object.entries(row.positions || {})
+    .map(([code, position]) => ({
+      code,
+      quantity: Number(position.quantity || 0),
+      avg_cost: Number(position.avg_cost || 0),
+      cost_amount: Number(position.quantity || 0) * Number(position.avg_cost || 0),
+      target_weight: Number(targets[code] || 0)
+    }))
+    .sort((a, b) => b.cost_amount - a.cost_amount)
+}
+
+async function runStrategyTracker(row: StrategyTracker) {
+  try {
+    const res = await paperApi.runStrategyTracker(row.tracker_id, true)
+    if (res.success) {
+      if (res.data.status === 'pending_data') {
+        ElMessage.warning('策略跟踪已暂停在缺数据日期，待行情补齐后会继续')
+      } else if (res.data.status === 'waiting_signal') {
+        ElMessage.info('模拟仓已创建，正在等待开始日之后的首个新信号')
+      } else {
+        ElMessage.success(res.data.skipped ? '没有新的目标事件，已跳过' : '策略跟踪已运行')
+      }
+      await fetchStrategyTrackers()
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '运行策略跟踪失败')
+  }
+}
+
+async function toggleStrategyTracker(row: StrategyTracker, active: boolean) {
+  try {
+    const res = await paperApi.updateStrategyTracker(row.tracker_id, { status: active ? 'active' : 'paused' })
+    if (res.success) await fetchStrategyTrackers()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '更新策略跟踪状态失败')
+  }
+}
+
+async function deleteStrategyTracker(row: StrategyTracker) {
+  try {
+    await ElMessageBox.confirm(`确认删除策略跟踪 ${row.name}？历史模拟成交也会删除。`, '删除策略跟踪', { type: 'warning' })
+    const res = await paperApi.deleteStrategyTracker(row.tracker_id)
+    if (res.success) {
+      ElMessage.success('已删除策略跟踪')
+      await fetchStrategyTrackers()
+    }
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '删除策略跟踪失败')
+  }
+}
+
 // 批量获取股票名称
 async function fetchStockNames(items: any[]) {
   if (!items || items.length === 0) return
@@ -462,7 +630,7 @@ async function confirmReset() {
 }
 
 async function refreshAll() {
-  await Promise.all([fetchAccount(), fetchPositions(), fetchOrders()])
+  await Promise.all([fetchAccount(), fetchPositions(), fetchOrders(), fetchStrategyTrackers()])
 }
 
 // 查看报告详情（跳转到报告详情页）
@@ -593,4 +761,8 @@ onMounted(() => {
 .header { display:flex; align-items:center; justify-content:space-between; margin-bottom: 12px; }
 .title { display:flex; align-items:center; font-weight: 600; font-size: 16px; }
 .card-hd { font-weight: 600; }
+.tracker-detail { padding: 10px 12px 14px; background: #fafafa; }
+.tracker-detail-head { display:flex; align-items:center; gap:12px; margin-bottom:10px; color:#606266; font-size:12px; }
+.tracker-detail-head strong { color:#303133; font-size:14px; }
+.tracker-expand-hint { margin-left:6px; color:#909399; font-size:12px; }
 </style>

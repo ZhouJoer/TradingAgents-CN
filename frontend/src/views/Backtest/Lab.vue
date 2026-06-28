@@ -40,6 +40,13 @@
           <div class="signal-tags">
             <el-tag v-for="item in selectedStrategy.signals || []" :key="item" size="small" type="info">{{ item }}</el-tag>
           </div>
+          <div v-if="selectedConceptExplanations.length" class="concept-explain-list">
+            <div v-for="item in selectedConceptExplanations" :key="item.term" class="concept-explain-item">
+              <strong>{{ item.term }}</strong>
+              <p>{{ item.meaning }}</p>
+              <small>{{ item.role }}</small>
+            </div>
+          </div>
           <dl class="param-mini-list">
             <template v-for="item in paramRows(singleForm.params)" :key="item.key">
               <dt>{{ item.key }}</dt>
@@ -79,10 +86,10 @@
               <el-date-picker v-model="singleDates" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始" end-placeholder="结束" />
             </el-form-item>
             <el-form-item label="Top K">
-              <el-input-number v-model="singleForm.params.top_k" :min="1" :max="5" />
+              <el-input-number v-model="singleForm.params.top_k" :min="1" :max="5" @change="markParamsEdited" />
             </el-form-item>
             <el-form-item label="频率">
-              <el-radio-group v-model="singleForm.params.rebalance_frequency">
+              <el-radio-group v-model="singleForm.params.rebalance_frequency" @change="markParamsEdited">
                 <el-radio-button label="weekly">周</el-radio-button>
                 <el-radio-button label="biweekly">双周</el-radio-button>
                 <el-radio-button label="monthly">月</el-radio-button>
@@ -90,8 +97,79 @@
             </el-form-item>
             <el-form-item>
               <el-button type="primary" :icon="TrendCharts" :loading="loading.single" @click="runSingle">运行回测</el-button>
+              <el-button :icon="DocumentAdd" :loading="loading.candidates" @click="saveDiscoveredAdaptiveTopK">保存混合参数</el-button>
+              <el-button type="success" :icon="Connection" @click="createTrackerFromCurrentParams">加入模拟仓</el-button>
             </el-form-item>
           </el-form>
+          <div class="param-source-bar">
+            <div class="param-source-main">
+              <el-tag :type="paramSourceTagType" size="small" effect="light">{{ paramSourceKindLabel }}</el-tag>
+              <strong>{{ paramSource.label }}</strong>
+              <span>{{ paramSource.detail }}</span>
+            </div>
+            <div v-if="paramSourceStats.length" class="param-source-stats">
+              <span v-for="item in paramSourceStats" :key="item.label">{{ item.label }} {{ item.value }}</span>
+            </div>
+            <el-button size="small" :icon="Refresh" :disabled="paramSource.kind === 'default'" @click="restoreDefaultParams">
+              恢复默认
+            </el-button>
+          </div>
+        </section>
+
+        <section v-if="editableParamFields.length" class="param-panel">
+          <div class="section-title">
+            <span>策略参数</span>
+            <small>{{ strategyParamHint }} · {{ paramSourceKindLabel }}</small>
+          </div>
+          <div class="param-editor-grid">
+            <div v-for="field in editableParamFields" :key="field.key" class="param-editor-item">
+              <label :for="`param-${field.key}`">{{ field.label || paramLabel(field.key) }}</label>
+              <el-select
+                v-if="field.type === 'select'"
+                :id="`param-${field.key}`"
+                v-model="singleForm.params[field.key]"
+                class="param-control"
+                size="small"
+                @change="markParamsEdited"
+              >
+                <el-option
+                  v-for="option in field.options || []"
+                  :key="String(option)"
+                  :label="valueLabels[String(option)] || String(option)"
+                  :value="option"
+                />
+              </el-select>
+              <el-switch
+                v-else-if="field.type === 'boolean'"
+                :id="`param-${field.key}`"
+                v-model="singleForm.params[field.key]"
+                class="param-switch"
+                size="small"
+                @change="markParamsEdited"
+              />
+              <el-input-number
+                v-else-if="field.type === 'number'"
+                :id="`param-${field.key}`"
+                v-model="singleForm.params[field.key]"
+                class="param-control"
+                size="small"
+                controls-position="right"
+                :min="field.min"
+                :max="field.max"
+                :step="paramStep(field)"
+                :precision="paramPrecision(field)"
+                @change="markParamsEdited"
+              />
+              <el-input
+                v-else
+                :id="`param-${field.key}`"
+                :model-value="listParamValue(field.key)"
+                class="param-control"
+                size="small"
+                @update:model-value="updateListParam(field.key, $event)"
+              />
+            </div>
+          </div>
         </section>
 
         <section v-if="singleResult" class="result-grid">
@@ -221,6 +299,12 @@
             <el-form-item label="日期">
               <el-date-picker v-model="compareDates" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始" end-placeholder="结束" />
             </el-form-item>
+            <el-form-item label="当前参数">
+              <el-checkbox v-model="compareForm.includeCurrentParams">
+                纳入对比
+                <span class="inline-hint">{{ compareCurrentParamLabel }}</span>
+              </el-checkbox>
+            </el-form-item>
             <el-form-item>
               <el-button type="primary" :icon="Connection" :loading="loading.compare" @click="runCompare">对比</el-button>
             </el-form-item>
@@ -290,46 +374,250 @@
         </section>
       </el-tab-pane>
 
+      <el-tab-pane label="参数库" name="library">
+        <section class="control-band">
+          <el-form :model="candidateFilters" inline label-width="72px">
+            <el-form-item label="策略">
+              <el-select v-model="candidateFilters.strategy_id" clearable filterable class="wide-control">
+                <el-option v-for="item in strategies" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="状态">
+              <el-select v-model="candidateFilters.status" class="small-control">
+                <el-option label="有效" value="active" />
+                <el-option label="归档" value="archived" />
+                <el-option label="全部" value="all" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="关键词">
+              <el-input v-model="candidateFilters.keyword" clearable placeholder="名称 / 标签 / 备注" />
+            </el-form-item>
+            <el-form-item>
+              <el-checkbox v-model="candidateFilters.favorite">仅收藏</el-checkbox>
+            </el-form-item>
+            <el-form-item>
+              <el-button :icon="Search" :loading="loading.candidates" @click="loadCandidates">筛选</el-button>
+            </el-form-item>
+          </el-form>
+        </section>
+
+        <section class="table-band">
+          <div class="section-title">
+            <span>候选参数库</span>
+            <small>{{ savedCandidates.length }} 组，可直接回测、对比或创建模拟跟踪</small>
+          </div>
+          <el-table :data="savedCandidates" size="small" height="330" v-loading="loading.candidates">
+            <el-table-column label="参数集" min-width="220">
+              <template #default="{ row }">
+                <strong>{{ row.name || strategyName(row.strategy_id) }}</strong>
+                <span class="muted-cell">{{ strategyName(row.strategy_id) }} · {{ candidateUniverseText(row) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="标签" min-width="160">
+              <template #default="{ row }">
+                <el-tag v-for="tag in candidateTags(row)" :key="tag" size="small" effect="plain">{{ tag }}</el-tag>
+                <span v-if="!candidateTags(row).length" class="muted-cell">-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="Score" width="90">
+              <template #default="{ row }">{{ num(row.score) }}</template>
+            </el-table-column>
+            <el-table-column label="收益" width="90">
+              <template #default="{ row }">{{ pct(row.metrics?.total_return) }}</template>
+            </el-table-column>
+            <el-table-column label="应用" width="90">
+              <template #default="{ row }">{{ row.applied_count || 0 }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'archived' ? 'info' : 'success'" size="small">
+                  {{ row.status === 'archived' ? '归档' : '有效' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="370" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" :icon="Select" @click="applyCandidate(row)">回测</el-button>
+                <el-button link type="success" :icon="Connection" @click="addCandidateToCompare(row)">对比</el-button>
+                <el-button link type="warning" :icon="DocumentAdd" @click="createTrackerFromCandidate(row)">跟踪</el-button>
+                <el-button link :icon="CopyDocument" @click="copyCandidateParams(row)">复制</el-button>
+                <el-button link :icon="Edit" @click="openEditCandidate(row)">编辑</el-button>
+                <el-button link :type="row.favorite ? 'warning' : 'info'" :icon="row.favorite ? StarFilled : Star" @click="toggleCandidateFavorite(row)" />
+                <el-button link type="info" :icon="Operation" @click="archiveCandidate(row)">归档</el-button>
+                <el-button link type="danger" :icon="Delete" @click="deleteCandidate(row)" />
+              </template>
+            </el-table-column>
+          </el-table>
+        </section>
+
+        <section class="table-band">
+          <div class="section-title">
+            <span>ETF 候选池</span>
+            <small>默认池 + 你的覆盖项；未显式传 universe 时使用 active 且排除现金观察组</small>
+          </div>
+          <el-form :model="etfDraft" inline label-width="64px" class="etf-editor">
+            <el-form-item label="代码">
+              <el-input v-model="etfDraft.code" placeholder="159915" class="small-control" />
+            </el-form-item>
+            <el-form-item label="名称">
+              <el-input v-model="etfDraft.name" placeholder="创业板 ETF" />
+            </el-form-item>
+            <el-form-item label="分组">
+              <el-select v-model="etfDraft.group" class="small-control">
+                <el-option v-for="item in etfGroupOptions" :key="item" :label="universeGroupLabel(item)" :value="item" />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :icon="DocumentAdd" @click="saveETFItem">保存</el-button>
+              <el-button :icon="Refresh" @click="refreshETFBasic">刷新基础信息</el-button>
+            </el-form-item>
+          </el-form>
+          <el-table :data="etfUniverse" size="small" height="270">
+            <el-table-column label="ETF" min-width="180">
+              <template #default="{ row }">
+                <strong>{{ row.code }}</strong>
+                <span class="muted-cell">{{ row.name }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="分组" width="100">
+              <template #default="{ row }">{{ universeGroupLabel(row.group) }}</template>
+            </el-table-column>
+            <el-table-column label="来源" width="110">
+              <template #default="{ row }">{{ row.is_default ? '内置' : row.source || 'manual' }}</template>
+            </el-table-column>
+            <el-table-column label="备注" min-width="160">
+              <template #default="{ row }">{{ row.note || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="启用" width="90" fixed="right">
+              <template #default="{ row }">
+                <el-switch :model-value="row.active !== false" @change="(value) => toggleETFActive(row, Boolean(value))" />
+              </template>
+            </el-table-column>
+          </el-table>
+        </section>
+      </el-tab-pane>
+
       <el-tab-pane label="自动挖掘" name="mine">
         <section class="control-band">
           <el-form :model="mineForm" inline label-width="86px">
-            <el-form-item label="模板">
+            <el-form-item label="模式">
+              <el-radio-group v-model="mineForm.mode">
+                <el-radio-button label="auto_robust">稳健自动</el-radio-button>
+                <el-radio-button label="custom">自定义</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="mineForm.mode === 'custom'" label="模板">
               <el-select v-model="mineForm.templates" multiple collapse-tags class="wide-control">
                 <el-option v-for="item in strategies" :key="item.id" :label="item.name" :value="item.id" />
               </el-select>
             </el-form-item>
+            <el-form-item v-if="mineForm.mode === 'custom'" label="套件">
+              <el-button-group class="template-actions">
+                <el-button :icon="Operation" @click="selectMiningTemplates('priceTools')">新指标</el-button>
+                <el-button :icon="TrendCharts" @click="selectMiningTemplates('core')">核心</el-button>
+                <el-button :icon="Select" @click="selectMiningTemplates('all')">全量</el-button>
+              </el-button-group>
+            </el-form-item>
             <el-form-item label="日期">
               <el-date-picker v-model="mineDates" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始" end-placeholder="结束" />
             </el-form-item>
-            <el-form-item label="方式">
+            <el-form-item v-if="mineForm.mode === 'custom'" label="方式">
               <el-radio-group v-model="mineForm.search_method">
                 <el-radio-button label="random">随机</el-radio-button>
                 <el-radio-button label="grid">网格</el-radio-button>
               </el-radio-group>
             </el-form-item>
-            <el-form-item label="次数">
+            <el-form-item v-if="mineForm.mode === 'custom'" label="次数">
               <el-input-number v-model="mineForm.max_trials" :min="1" :max="300" />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" :icon="Search" :loading="loading.mine" @click="startMining">开始挖掘</el-button>
+              <el-button type="primary" :icon="Search" :loading="loading.mine" @click="startMining">
+                {{ mineForm.mode === 'auto_robust' ? '稳健自动挖掘' : '开始挖掘' }}
+              </el-button>
             </el-form-item>
           </el-form>
+          <div v-if="mineForm.mode === 'auto_robust'" class="auto-mining-explain">
+            <div v-for="item in autoMiningSteps" :key="item.title" class="auto-mining-step">
+              <strong>{{ item.title }}</strong>
+              <span>{{ item.text }}</span>
+            </div>
+          </div>
         </section>
 
         <section v-if="miningRun" class="mine-status">
           <el-progress :percentage="Number(miningRun.progress || 0)" :status="miningRun.status === 'failed' ? 'exception' : miningRun.status === 'completed' ? 'success' : undefined" />
           <span>{{ miningRun.status }} · {{ miningRun.message }}</span>
           <span v-if="walkForwardCount" class="muted">Walk-forward {{ walkForwardCount }} 段</span>
+          <span v-if="miningRun.status === 'completed'" class="muted">通过 {{ miningRun.candidate_count || 0 }} / {{ miningRun.trial_count || 0 }}</span>
         </section>
 
-        <section v-if="miningTrials.length" class="result-grid">
+        <section v-if="miningPolicyRows.length" class="table-band">
+          <div class="section-title">
+            <span>挖掘方法</span>
+            <small>{{ miningRun?.policy?.profile?.name || miningModeLabel(miningRun?.mode) }}</small>
+          </div>
+          <div class="mining-policy-grid">
+            <div v-for="item in miningPolicyRows" :key="item.label" class="policy-metric">
+              <span>{{ item.label }}</span>
+              <strong>{{ item.value }}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="miningTrials.length" class="result-grid mining-results-grid">
           <div class="chart-panel">
+            <div class="section-title">
+              <span>参数热力图</span>
+              <small>颜色越深代表综合分越高</small>
+            </div>
             <v-chart class="heatmap-chart" :option="heatmapOption" autoresize />
           </div>
-          <div class="metric-panel">
-            <el-table :data="miningTrials.slice(0, 8)" size="small" height="320">
+          <div class="metric-panel mining-trials-panel">
+            <div class="section-title">
+              <span>候选试验</span>
+              <small>展开行查看通过检查、淘汰原因和评分拆解</small>
+            </div>
+            <el-table :data="miningTrials.slice(0, 8)" class="trial-table" size="small" height="360" :fit="false">
+              <el-table-column type="expand" width="42">
+                <template #default="{ row }">
+                  <div class="trial-explanation">
+                    <div class="trial-explanation-head">
+                      <strong>{{ trialDecisionLabel(row) }}</strong>
+                      <span>{{ row.explanation?.method || '训练/验证/样本外 + walk-forward + 成本压力测试' }}</span>
+                    </div>
+                    <div class="trial-explain-grid">
+                      <div>
+                        <h4>通过检查</h4>
+                        <el-tag v-for="item in explanationChecks(row, true)" :key="item.key" size="small" type="success" effect="plain">
+                          {{ item.label }} {{ checkValueText(item) }}
+                        </el-tag>
+                        <span v-if="!explanationChecks(row, true).length" class="muted-cell">暂无</span>
+                      </div>
+                      <div>
+                        <h4>淘汰原因</h4>
+                        <el-tag v-for="item in explanationChecks(row, false)" :key="item.key" size="small" type="danger" effect="plain">
+                          {{ item.label }} {{ checkValueText(item) }}
+                        </el-tag>
+                        <span v-if="!explanationChecks(row, false).length" class="muted-cell">全部通过</span>
+                      </div>
+                      <div>
+                        <h4>评分正项</h4>
+                        <span v-for="item in scoreComponentRows(row, 'positive')" :key="item.key" class="score-chip positive">
+                          {{ item.label }} {{ num(item.value) }}
+                        </span>
+                      </div>
+                      <div>
+                        <h4>惩罚项</h4>
+                        <span v-for="item in scoreComponentRows(row, 'penalty')" :key="item.key" class="score-chip penalty">
+                          {{ item.label }} {{ num(item.value) }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
               <el-table-column prop="rank" label="#" width="48" />
-              <el-table-column label="策略" min-width="150">
+              <el-table-column label="策略" width="180">
                 <template #default="{ row }">{{ strategyName(row.strategy_id) }}</template>
               </el-table-column>
               <el-table-column prop="score" label="分数" width="90" />
@@ -359,34 +647,111 @@
                   <el-tag :type="row.accepted ? 'success' : 'info'" size="small">{{ row.accepted ? '是' : '否' }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="150" fixed="right">
+              <el-table-column label="结论" width="180">
+                <template #default="{ row }">{{ topTrialReason(row) }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="168" fixed="right">
                 <template #default="{ row }">
-                  <el-button link type="primary" :icon="Select" @click="applyTrial(row)">应用</el-button>
-                  <el-button link type="success" :icon="DocumentAdd" :loading="savingCandidate === trialKey(row)" @click="saveTrial(row)">保存</el-button>
+                  <div class="trial-actions">
+                    <el-button link type="primary" :icon="Select" @click="applyTrial(row)">
+                      {{ row.accepted ? '使用候选' : '试用参数' }}
+                    </el-button>
+                    <el-button link type="success" :icon="DocumentAdd" :loading="savingCandidate === trialKey(row)" @click="openSaveTrialDialog(row)">保存</el-button>
+                  </div>
                 </template>
               </el-table-column>
             </el-table>
           </div>
         </section>
+
+        <section v-if="savedCandidates.length" class="table-band">
+          <div class="section-title">
+            <span>已保存候选参数</span>
+            <small>应用后进入单策略表单，不覆盖默认参数</small>
+          </div>
+          <el-table :data="savedCandidates" size="small" height="260">
+            <el-table-column label="策略" min-width="180">
+              <template #default="{ row }">{{ strategyName(row.strategy_id) }}</template>
+            </el-table-column>
+            <el-table-column label="分数" width="90">
+              <template #default="{ row }">{{ num(row.score) }}</template>
+            </el-table-column>
+            <el-table-column label="收益" width="90">
+              <template #default="{ row }">{{ pct(row.metrics?.total_return) }}</template>
+            </el-table-column>
+            <el-table-column label="回撤" width="90">
+              <template #default="{ row }">{{ pct(row.metrics?.max_drawdown) }}</template>
+            </el-table-column>
+            <el-table-column label="Calmar" width="90">
+              <template #default="{ row }">{{ num(row.metrics?.calmar) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="190" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" :icon="Select" @click="applyCandidate(row)">应用</el-button>
+                <el-button link type="warning" :icon="Connection" @click="createTrackerFromCandidate(row)">加入模拟仓</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </section>
       </el-tab-pane>
         </el-tabs>
       </main>
     </div>
+
+    <el-dialog v-model="saveCandidateDialog" title="保存候选参数" width="520px">
+      <el-form label-width="72px">
+        <el-form-item label="名称">
+          <el-input v-model="candidateDraft.name" />
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-input v-model="candidateDraft.tags" placeholder="逗号分隔，如 accepted, low_turnover" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="candidateDraft.note" type="textarea" :rows="3" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="saveCandidateDialog = false">取消</el-button>
+        <el-button type="primary" :loading="!!savingCandidate" @click="saveTrial()">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="editCandidateDialog" title="编辑候选参数" width="520px">
+      <el-form label-width="72px">
+        <el-form-item label="名称">
+          <el-input v-model="candidateEditDraft.name" />
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-input v-model="candidateEditDraft.tags" placeholder="逗号分隔" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="candidateEditDraft.note" type="textarea" :rows="3" />
+        </el-form-item>
+        <el-form-item label="收藏">
+          <el-switch v-model="candidateEditDraft.favorite" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editCandidateDialog = false">取消</el-button>
+        <el-button type="primary" @click="updateCandidateDraft">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import dayjs from 'dayjs'
-import { ElMessage } from 'element-plus'
-import { Connection, DocumentAdd, Refresh, Search, Select, TrendCharts } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Connection, CopyDocument, Delete, DocumentAdd, Edit, Operation, Refresh, Search, Select, Star, StarFilled, TrendCharts } from '@element-plus/icons-vue'
 import { use as echartsUse } from 'echarts/core'
 import { LineChart, HeatmapChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, VisualMapComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import type { EChartsOption } from 'echarts'
-import { backtestApi, type BacktestResult, type BacktestSignalStability, type BacktestStrategy, type EntryOffsetStabilityResult, type ETFUniverseItem, type MiningRun, type MiningTrial } from '@/api/backtest'
+import { backtestApi, type BacktestResult, type BacktestSignalStability, type BacktestStrategy, type EntryOffsetStabilityResult, type ETFUniverseItem, type MiningCandidate, type MiningExplanationCheck, type MiningRun, type MiningTrial } from '@/api/backtest'
+import { paperApi } from '@/api/paper'
 
 echartsUse([LineChart, HeatmapChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, VisualMapComponent, CanvasRenderer])
 
@@ -397,11 +762,36 @@ const singleResult = ref<BacktestResult | null>(null)
 const compareResults = ref<BacktestResult[]>([])
 const stabilityResult = ref<EntryOffsetStabilityResult | null>(null)
 const miningRun = ref<MiningRun | null>(null)
+const savedCandidates = ref<MiningCandidate[]>([])
 const miningTrials = computed<MiningTrial[]>(() => miningRun.value?.trials || [])
 const walkForwardCount = computed(() => Array.isArray(miningRun.value?.split_plan?.walk_forward) ? miningRun.value.split_plan.walk_forward.length : 0)
-const loading = reactive({ single: false, compare: false, stability: false, mine: false })
+const miningPolicyRows = computed(() => {
+  const policy = miningRun.value?.policy
+  if (!policy) return []
+  const constraints = policy.constraints || {}
+  return [
+    { label: '模板池', value: String((policy.templates || []).length) },
+    { label: '搜索方式', value: valueLabels[policy.search_method] || policy.search_method || '-' },
+    { label: '试验上限', value: String(policy.max_trials ?? '-') },
+    { label: 'Walk-forward', value: `${policy.walk_forward?.max_slices ?? 0} 段` },
+    { label: '最大回撤', value: pct(constraints.max_drawdown) },
+    { label: 'WF正收益', value: pct(constraints.min_walk_forward_positive_ratio) },
+    { label: 'WF超额', value: pct(constraints.min_walk_forward_beat_benchmark_ratio) },
+    { label: '最少交易', value: String(constraints.min_trades ?? '-') }
+  ]
+})
+const loading = reactive({ single: false, compare: false, stability: false, mine: false, candidates: false })
 const pollTimer = ref<number | null>(null)
 const savingCandidate = ref<string | null>(null)
+const saveCandidateDialog = ref(false)
+const editCandidateDialog = ref(false)
+
+const autoMiningSteps = [
+  { title: '模板池', text: '排除 Fibonacci，优先动量、EMA、Price Action 与稳健自适应轮动。' },
+  { title: '验证法', text: '使用训练/验证/样本外切分，并额外做多段 walk-forward。' },
+  { title: '压力测试', text: '候选必须在 2 倍手续费和滑点下仍保持正收益。' },
+  { title: '通过门槛', text: '约束样本外回撤、交易次数、WF 正收益占比和跑赢基准占比。' }
+]
 
 const defaultStart = dayjs().subtract(4, 'year').format('YYYY-MM-DD')
 const defaultEnd = dayjs().format('YYYY-MM-DD')
@@ -417,7 +807,106 @@ const singleForm = reactive({
   slippage_bps: 5,
   params: {} as Record<string, any>
 })
+
+interface ParamSourceState {
+  kind: 'default' | 'mined' | 'manual'
+  label: string
+  detail: string
+  baseLabel?: string
+  accepted?: boolean
+  trial?: MiningTrial
+  candidate?: MiningCandidate
+}
+
+const paramSource = ref<ParamSourceState>({
+  kind: 'default',
+  label: '策略默认参数',
+  detail: '来自策略目录的默认配置'
+})
+
+interface ConceptExplanation {
+  term: string
+  meaning: string
+  role: string
+}
+
+const conceptExplanations: Record<string, ConceptExplanation[]> = {
+  price_action_breakout_rotation: [
+    {
+      term: 'Price Action',
+      meaning: '只看价格本身形成的结构，例如近期高点、低点是否抬高、突破和区间位置。',
+      role: '本策略把它量化为接近或突破回看高点、低点抬高、短期动量为正。'
+    },
+    {
+      term: '突破缓冲',
+      meaning: '0.99 表示收盘价达到近期高点的 99% 就算接近突破，1.00 表示必须真正突破。',
+      role: '数值越低越容易入场，信号更早但噪音也更高。'
+    },
+    {
+      term: '低点抬高',
+      meaning: '最近一段时间的最低价高于前一段最低价，代表价格结构没有继续走弱。',
+      role: '开启后会过滤掉只有反弹、但底部结构还没改善的 ETF。'
+    }
+  ],
+  fibonacci_retracement_rotation: [
+    {
+      term: 'Fibonacci 回撤',
+      meaning: '从一段上涨的 swing low 到 swing high 计算 38.2%、50%、61.8% 等回撤区。',
+      role: '当前回测稳定性偏弱，更适合作为观察信号，不建议单独作为主轮动策略。'
+    },
+    {
+      term: 'Swing 高低点',
+      meaning: '当前实现会在回看窗口里自动寻找先出现的低点和之后的高点，作为上涨段。',
+      role: '回看窗口越长，识别的是越大的价格波段。'
+    },
+    {
+      term: '反弹确认',
+      meaning: '价格进入 Fibonacci 区间后，还要相对若干日前上涨，并站上趋势 EMA。',
+      role: '它避免把仍在下跌中的回撤误判成买点。'
+    }
+  ]
+}
+
 const selectedStrategy = computed(() => strategies.value.find((item) => item.id === singleForm.strategy_id))
+const selectedConceptExplanations = computed(() => conceptExplanations[singleForm.strategy_id] || [])
+const primaryParamKeys = new Set(['top_k', 'rebalance_frequency'])
+const editableParamFields = computed(() => (selectedStrategy.value?.parameter_schema || []).filter((item: any) => !primaryParamKeys.has(String(item.key))))
+const strategyParamHint = computed(() => {
+  if (!selectedStrategy.value) return ''
+  const status = statusLabel(selectedStrategy.value.status)
+  const family = familyLabel(selectedStrategy.value.family)
+  return `${family} / ${status}`
+})
+const paramSourceKindLabel = computed(() => {
+  if (paramSource.value.kind === 'default') return '默认参数'
+  if (paramSource.value.kind === 'mined') return paramSource.value.accepted ? '挖掘候选' : '挖掘试验'
+  return '手动修改'
+})
+const paramSourceTagType = computed(() => {
+  if (paramSource.value.kind === 'default') return 'info'
+  if (paramSource.value.kind === 'mined') return paramSource.value.accepted ? 'success' : 'warning'
+  return 'warning'
+})
+const paramSourceStats = computed(() => {
+  const trial = paramSource.value.kind === 'mined' ? paramSource.value.trial : null
+  const candidate = paramSource.value.kind === 'mined' ? paramSource.value.candidate : null
+  if (candidate) {
+    return [
+      { label: 'Score', value: num(candidate.score) },
+      { label: '收益', value: pct(candidate.metrics?.total_return) },
+      { label: '回撤', value: pct(candidate.metrics?.max_drawdown) },
+      { label: 'Calmar', value: num(candidate.metrics?.calmar) }
+    ]
+  }
+  if (!trial) return []
+  return [
+    { label: 'Rank', value: `#${trial.rank || trial.trial_index || '-'}` },
+    { label: 'Score', value: num(trial.score) },
+    { label: '样本外', value: pct(trial.test_metrics?.total_return) },
+    { label: 'WF', value: `${pct(trial.walk_forward_summary?.positive_ratio)} / ${pct(trial.walk_forward_summary?.beat_benchmark_ratio)}` }
+  ]
+})
+const compareCurrentParamLabel = computed(() => `${strategyName(singleForm.strategy_id)} · ${paramSourceKindLabel.value}`)
 const rotationUniverse = computed(() => etfUniverse.value.filter((item) => item.group !== 'cash_watch'))
 const cashWatchUniverse = computed(() => etfUniverse.value.filter((item) => item.group === 'cash_watch'))
 const universeGroups = computed(() => {
@@ -434,14 +923,39 @@ const visibleUniverseItems = computed(() => rotationUniverse.value.slice(0, 18))
 const hiddenUniverseCount = computed(() => Math.max(0, rotationUniverse.value.length - visibleUniverseItems.value.length))
 
 const compareForm = reactive({
-  strategyIds: ['biweekly_adaptive_stable_rotation', 'adaptive_regime_rotation', 'industry_momentum_enhanced', 'donchian_breakout_rotation']
+  strategyIds: ['industry_momentum_enhanced', 'ema_momentum_rotation', 'price_action_breakout_rotation', 'dual_momentum_core'],
+  includeCurrentParams: false
 })
 
 const mineForm = reactive({
-  templates: ['biweekly_adaptive_stable_rotation', 'adaptive_regime_rotation', 'industry_momentum_enhanced', 'donchian_breakout_rotation'],
+  mode: 'auto_robust',
+  templates: ['ema_momentum_rotation', 'price_action_breakout_rotation'],
   search_method: 'random',
-  max_trials: 40,
+  max_trials: 120,
   seed: 7
+})
+
+const candidateFilters = reactive({
+  strategy_id: '',
+  status: 'active',
+  keyword: '',
+  favorite: false,
+  sort_by: 'created'
+})
+const etfDraft = reactive({ code: '', name: '', group: 'sector' })
+const etfGroupOptions = ['broad', 'sector', 'factor', 'commodity', 'cash_watch']
+const candidateDraft = reactive({
+  row: null as MiningTrial | null,
+  name: '',
+  tags: '',
+  note: ''
+})
+const candidateEditDraft = reactive({
+  candidate_id: '',
+  name: '',
+  tags: '',
+  note: '',
+  favorite: false
 })
 
 const stabilityForm = reactive({
@@ -457,6 +971,32 @@ async function loadMeta() {
     applyStrategyDefaults()
   }
   if (universeRes.success) etfUniverse.value = universeRes.data.items
+  await loadCandidates()
+}
+
+async function loadETFUniverse() {
+  const res = await backtestApi.getETFUniverse()
+  if (res.success) etfUniverse.value = res.data.items
+}
+
+async function loadCandidates() {
+  try {
+    loading.candidates = true
+    const params: Record<string, any> = {
+      limit: 100,
+      status: candidateFilters.status,
+      sort_by: candidateFilters.sort_by
+    }
+    if (candidateFilters.strategy_id) params.strategy_id = candidateFilters.strategy_id
+    if (candidateFilters.keyword) params.keyword = candidateFilters.keyword
+    if (candidateFilters.favorite) params.favorite = true
+    const res = await backtestApi.listCandidates(params)
+    if (res.success) savedCandidates.value = res.data.items
+  } catch {
+    savedCandidates.value = []
+  } finally {
+    loading.candidates = false
+  }
 }
 
 function applyStrategyDefaults() {
@@ -467,6 +1007,45 @@ function applyStrategyDefaults() {
     min_days_to_rebalance_for_cash_entry: 2,
     ...defaults
   }
+  setDefaultParamSource()
+}
+
+function setDefaultParamSource() {
+  paramSource.value = {
+    kind: 'default',
+    label: `${strategyName(singleForm.strategy_id)} 默认参数`,
+    detail: '来自策略目录的默认配置；切换策略时会自动载入。'
+  }
+}
+
+function restoreDefaultParams() {
+  applyStrategyDefaults()
+  ElMessage.success('已恢复策略默认参数')
+}
+
+function markParamsEdited() {
+  if (paramSource.value.kind === 'manual') return
+  paramSource.value = {
+    ...paramSource.value,
+    kind: 'manual',
+    label: '手动修改参数',
+    detail: `基于${paramSourceKindLabel.value}调整；不会覆盖策略默认参数。`,
+    baseLabel: paramSource.value.label,
+    trial: undefined
+  }
+}
+
+function selectMiningTemplates(mode: 'priceTools' | 'core' | 'all') {
+  const ids = strategies.value.map((item) => item.id)
+  const priceTools = ['ema_momentum_rotation', 'price_action_breakout_rotation'].filter((id) => ids.includes(id))
+  const core = ['industry_momentum_enhanced', 'biweekly_adaptive_stable_rotation', 'dual_momentum_core', 'trend_following_equal_weight'].filter((id) => ids.includes(id))
+  if (mode === 'all') {
+    mineForm.templates = ids
+    mineForm.max_trials = Math.max(mineForm.max_trials, 120)
+    return
+  }
+  mineForm.templates = mode === 'core' ? core : priceTools
+  mineForm.max_trials = Math.max(mineForm.max_trials, mode === 'core' ? 60 : 60)
 }
 
 function basePayload(dates: [string, string]) {
@@ -502,9 +1081,17 @@ async function runSingle() {
 async function runCompare() {
   try {
     loading.compare = true
+    const requests = compareForm.strategyIds.map((id) => ({ strategy_id: id, label: `${strategyName(id)} · 默认`, params: {} }))
+    if (compareForm.includeCurrentParams) {
+      requests.push({
+        strategy_id: singleForm.strategy_id,
+        label: compareCurrentParamLabel.value,
+        params: { ...singleForm.params }
+      })
+    }
     const res = await backtestApi.compare({
       ...basePayload(compareDates.value),
-      strategies: compareForm.strategyIds.map((id) => ({ strategy_id: id, label: strategyName(id), params: {} }))
+      strategies: requests
     })
     if (res.success) compareResults.value = res.data.items
   } catch (error: any) {
@@ -538,9 +1125,10 @@ async function startMining() {
     loading.mine = true
     const res = await backtestApi.startMining({
       ...basePayload(mineDates.value),
+      mode: mineForm.mode,
       templates: mineForm.templates,
       search_method: mineForm.search_method,
-      max_trials: mineForm.max_trials,
+      max_trials: mineForm.mode === 'auto_robust' ? Math.max(mineForm.max_trials, 120) : mineForm.max_trials,
       seed: mineForm.seed
     })
     if (res.success) {
@@ -581,33 +1169,260 @@ function trialKey(row: MiningTrial) {
 function applyTrial(row: MiningTrial) {
   singleForm.strategy_id = row.strategy_id
   singleForm.params = { ...row.params }
+  paramSource.value = {
+    kind: 'mined',
+    label: `${strategyName(row.strategy_id)} #${row.rank || row.trial_index || '-'}`,
+    detail: row.accepted ? '来自自动挖掘并通过稳健门槛；可直接运行单策略回测。' : `来自挖掘试验但未通过：${topTrialReason(row)}。`,
+    accepted: row.accepted,
+    trial: row
+  }
+  compareForm.includeCurrentParams = true
   activeTab.value = 'single'
-  ElMessage.success('已应用到单策略回测表单')
+  ElMessage.success(row.accepted ? '已应用挖掘候选参数' : '已试用挖掘试验参数')
 }
 
-async function saveTrial(row: MiningTrial) {
+async function applyCandidate(row: MiningCandidate) {
+  let candidate = row
+  let params = row.params || {}
   try {
-    const key = trialKey(row)
+    const res = await backtestApi.applyCandidate(row.candidate_id)
+    if (res.success) {
+      candidate = res.data.candidate
+      params = res.data.params || candidate.params || {}
+      await loadCandidates()
+    }
+  } catch (error: any) {
+    ElMessage.warning(apiErrorMessage(error, '候选应用计数失败，已使用本地参数'))
+  }
+  singleForm.strategy_id = candidate.strategy_id
+  singleForm.params = { ...params }
+  paramSource.value = {
+    kind: 'mined',
+    label: candidate.name || `${strategyName(candidate.strategy_id)} 已保存候选`,
+    detail: '来自候选策略库；可直接运行回测或纳入策略对比。',
+    accepted: true,
+    candidate
+  }
+  compareForm.includeCurrentParams = true
+  activeTab.value = 'single'
+  ElMessage.success('已应用已保存候选参数')
+}
+
+async function addCandidateToCompare(row: MiningCandidate) {
+  await applyCandidate(row)
+  if (!compareForm.strategyIds.includes(row.strategy_id)) compareForm.strategyIds.push(row.strategy_id)
+  compareForm.includeCurrentParams = true
+  activeTab.value = 'compare'
+}
+
+async function saveDiscoveredAdaptiveTopK() {
+  try {
+    loading.candidates = true
+    const res = await backtestApi.saveDiscoveredAdaptiveTopK({
+      universe: rotationUniverse.value.map((item) => item.code),
+      favorite: true
+    })
+    if (res.success) {
+      await loadCandidates()
+      await applyCandidate(res.data)
+      ElMessage.success('已保存混合 Top2 参数，可直接加入模拟仓')
+    }
+  } catch (error: any) {
+    ElMessage.error(apiErrorMessage(error, '保存混合参数失败'))
+  } finally {
+    loading.candidates = false
+  }
+}
+
+async function createTrackerFromCurrentParams() {
+  try {
+    const res = await paperApi.createStrategyTracker({
+      name: `${strategyName(singleForm.strategy_id)} · ${paramSourceKindLabel.value}`,
+      strategy_id: singleForm.strategy_id,
+      params: { ...singleForm.params },
+      universe: rotationUniverse.value.map((item) => item.code),
+      tracking_start_date: dayjs().format('YYYY-MM-DD'),
+      open_policy: 'next_signal',
+      initial_cash: singleForm.initial_cash || 1000000,
+      commission_bps: singleForm.commission_bps || 5,
+      slippage_bps: singleForm.slippage_bps || 5,
+      adjust: 'qfq'
+    })
+    if (res.success) ElMessage.success('已加入模拟仓，可在“模拟交易 / 策略跟踪”查看')
+  } catch (error: any) {
+    ElMessage.error(apiErrorMessage(error, '加入模拟仓失败'))
+  }
+}
+
+async function createTrackerFromCandidate(row: MiningCandidate) {
+  try {
+    const candidate = row
+    const res = await backtestApi.createPaperTrackerFromCandidate(row.candidate_id, {
+      name: candidate.name || `${strategyName(candidate.strategy_id)} 参数跟踪`,
+      tracking_start_date: dayjs().format('YYYY-MM-DD'),
+      open_policy: 'next_signal',
+      initial_cash: 1000000,
+      commission_bps: 5,
+      slippage_bps: 5,
+      adjust: 'qfq'
+    })
+    if (res.success) {
+      ElMessage.success('已加入模拟仓，可在“模拟交易 / 策略跟踪”查看')
+      await loadCandidates()
+    }
+  } catch (error: any) {
+    ElMessage.error(apiErrorMessage(error, '加入模拟仓失败'))
+  }
+}
+
+async function copyCandidateParams(row: MiningCandidate) {
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(row.params || {}, null, 2))
+    ElMessage.success('参数 JSON 已复制')
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
+function openEditCandidate(row: MiningCandidate) {
+  candidateEditDraft.candidate_id = row.candidate_id
+  candidateEditDraft.name = row.name || strategyName(row.strategy_id)
+  candidateEditDraft.tags = candidateTags(row).join(', ')
+  candidateEditDraft.note = row.note || ''
+  candidateEditDraft.favorite = !!row.favorite
+  editCandidateDialog.value = true
+}
+
+async function updateCandidateDraft() {
+  try {
+    await backtestApi.updateCandidate(candidateEditDraft.candidate_id, {
+      name: candidateEditDraft.name,
+      tags: splitTags(candidateEditDraft.tags),
+      note: candidateEditDraft.note,
+      favorite: candidateEditDraft.favorite
+    })
+    editCandidateDialog.value = false
+    await loadCandidates()
+    ElMessage.success('候选参数已更新')
+  } catch (error: any) {
+    ElMessage.error(apiErrorMessage(error, '更新候选参数失败'))
+  }
+}
+
+async function toggleCandidateFavorite(row: MiningCandidate) {
+  try {
+    await backtestApi.updateCandidate(row.candidate_id, { favorite: !row.favorite })
+    await loadCandidates()
+  } catch (error: any) {
+    ElMessage.error(apiErrorMessage(error, '更新收藏失败'))
+  }
+}
+
+async function archiveCandidate(row: MiningCandidate) {
+  try {
+    await backtestApi.updateCandidate(row.candidate_id, { status: 'archived' })
+    await loadCandidates()
+  } catch (error: any) {
+    ElMessage.error(apiErrorMessage(error, '归档失败'))
+  }
+}
+
+async function deleteCandidate(row: MiningCandidate) {
+  try {
+    await ElMessageBox.confirm(`确认删除 ${row.name || strategyName(row.strategy_id)}？`, '删除候选参数', { type: 'warning' })
+    await backtestApi.deleteCandidate(row.candidate_id)
+    await loadCandidates()
+    ElMessage.success('已删除候选参数')
+  } catch (error: any) {
+    if (error !== 'cancel') ElMessage.error(apiErrorMessage(error, '删除失败'))
+  }
+}
+
+async function saveETFItem() {
+  try {
+    if (!etfDraft.code.trim()) {
+      ElMessage.warning('请填写 ETF 代码')
+      return
+    }
+    const res = await backtestApi.saveETFUniverseItem({
+      code: etfDraft.code,
+      name: etfDraft.name || etfDraft.code,
+      group: etfDraft.group,
+      active: true,
+      source: 'manual'
+    })
+    if (res.success) {
+      etfDraft.code = ''
+      etfDraft.name = ''
+      etfDraft.group = 'sector'
+      await loadETFUniverse()
+      ElMessage.success('已保存 ETF 候选项')
+    }
+  } catch (error: any) {
+    ElMessage.error(apiErrorMessage(error, '保存 ETF 失败'))
+  }
+}
+
+async function toggleETFActive(row: ETFUniverseItem, active: boolean) {
+  try {
+    await backtestApi.updateETFUniverseItem(row.code, { active })
+    await loadETFUniverse()
+  } catch (error: any) {
+    ElMessage.error(apiErrorMessage(error, '更新 ETF 状态失败'))
+  }
+}
+
+async function refreshETFBasic() {
+  try {
+    const res = await backtestApi.refreshETFBasic('akshare')
+    if (res.success) ElMessage.success(`ETF 基础信息已刷新 ${res.data.saved} 条`)
+    await loadETFUniverse()
+  } catch (error: any) {
+    ElMessage.error(apiErrorMessage(error, '刷新 ETF 基础信息失败'))
+  }
+}
+
+function openSaveTrialDialog(row: MiningTrial) {
+  candidateDraft.row = row
+  candidateDraft.name = `${strategyName(row.strategy_id)} #${row.rank || row.trial_index || row.strategy_id}`
+  candidateDraft.tags = row.accepted ? 'accepted' : 'trial'
+  candidateDraft.note = topTrialReason(row)
+  saveCandidateDialog.value = true
+}
+
+async function saveTrial(row?: MiningTrial | null) {
+  const trial = row || candidateDraft.row
+  if (!trial) return
+  try {
+    const key = trialKey(trial)
     savingCandidate.value = key
     const res = await backtestApi.saveCandidate({
-      name: `${strategyName(row.strategy_id)} #${row.rank || row.strategy_id}`,
-      strategy_id: row.strategy_id,
-      params: row.params,
+      name: candidateDraft.name || `${strategyName(trial.strategy_id)} #${trial.rank || trial.strategy_id}`,
+      strategy_id: trial.strategy_id,
+      params: trial.params,
       run_id: miningRun.value?.run_id,
-      trial_index: row.trial_index || row.rank,
-      score: row.score,
-      metrics: row.test_metrics,
+      trial_index: trial.trial_index || trial.rank,
+      score: trial.score,
+      metrics: trial.test_metrics,
+      tags: splitTags(candidateDraft.tags),
+      note: candidateDraft.note,
+      source: 'mining',
       evaluation: {
-        train_metrics: row.train_metrics,
-        validation_metrics: row.validation_metrics,
-        test_metrics: row.test_metrics,
-        stress_2x_metrics: row.stress_2x_metrics,
-        walk_forward_summary: row.walk_forward_summary || {},
-        walk_forward_slices: row.walk_forward_slices || [],
-        reasons: row.reasons || []
+        train_metrics: trial.train_metrics,
+        validation_metrics: trial.validation_metrics,
+        test_metrics: trial.test_metrics,
+        stress_2x_metrics: trial.stress_2x_metrics,
+        walk_forward_summary: trial.walk_forward_summary || {},
+        walk_forward_slices: trial.walk_forward_slices || [],
+        reasons: trial.reasons || [],
+        explanation: trial.explanation || {}
       }
     })
-    if (res.success) ElMessage.success('已保存候选策略配置')
+    if (res.success) {
+      ElMessage.success('已保存候选策略配置')
+      saveCandidateDialog.value = false
+      await loadCandidates()
+    }
   } catch (error: any) {
     ElMessage.error(apiErrorMessage(error, '保存候选策略失败'))
   } finally {
@@ -625,6 +1440,24 @@ function strategyName(id: string) {
 
 function etfName(code: string) {
   return etfUniverse.value.find((item) => item.code === code)?.name || code
+}
+
+function splitTags(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean)
+  return String(value || '')
+    .split(/[,，\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function candidateTags(row: MiningCandidate) {
+  return splitTags(row.tags || [])
+}
+
+function candidateUniverseText(row: MiningCandidate) {
+  const universe = row.universe || []
+  if (!universe.length) return '默认 active 池'
+  return `${universe.length} 只 ETF`
 }
 
 function pct(value?: number) {
@@ -649,12 +1482,18 @@ const valueLabels: Record<string, string> = {
   qfq: '前复权',
   hfq: '后复权',
   none: '不复权',
+  random: '随机',
+  grid: '网格',
+  auto_robust: '稳健自动',
+  custom: '自定义',
   ret_gt_0: '收益率大于 0',
   score_gt_0: '综合分大于 0',
   trend_filter: '趋势过滤',
   daily_when_cash: '空仓时每日扫描',
   cash_confirmed_scan: '空仓确认入场',
-  rebalance_only: '仅调仓日扫描'
+  rebalance_only: '仅调仓日扫描',
+  true: '是',
+  false: '否'
 }
 
 const fallbackParamLabels: Record<string, string> = {
@@ -666,8 +1505,15 @@ const fallbackParamLabels: Record<string, string> = {
   absolute_window: '绝对动量窗口',
   trend_fast_ma: '快趋势均线',
   trend_ma: '趋势均线',
+  fast_ema: '快 EMA',
+  slow_ema: '慢 EMA',
+  trend_ema: '趋势 EMA',
+  trend_weight: '趋势权重',
   vol_window: '波动窗口',
   vol_penalty: '波动惩罚',
+  adaptive_top_k: 'Top K 自适应',
+  top_k_score_gap: 'Top1/2 分差阈值',
+  min_momentum: '最小动量',
   empty_threshold: '空仓规则',
   cash_entry_mode: '空仓入场',
   cash_entry_confirmations: '空仓确认次数',
@@ -682,6 +1528,18 @@ const fallbackParamLabels: Record<string, string> = {
   score_window: '评分窗口',
   lookback: '回看窗口',
   breakout_buffer: '突破缓冲',
+  higher_low_window: '低点窗口',
+  require_higher_low: '要求低点抬高',
+  breakout_weight: '突破权重',
+  range_weight: '区间权重',
+  fib_low: '回撤下沿',
+  fib_high: '回撤上沿',
+  zone_tolerance: '区间容忍',
+  bounce_days: '反弹确认日',
+  bounce_threshold: '反弹阈值',
+  min_leg_return: '最小上升段',
+  bounce_weight: '反弹权重',
+  fib_distance_penalty: '偏离惩罚',
   rsrs_window: 'RSRS窗口',
   z_window: '标准分窗口',
   z_threshold: '标准分阈值',
@@ -755,9 +1613,84 @@ function reasonLabel(value?: string) {
     regime_range: '震荡状态',
     regime_range_no_asset: '震荡状态无合格标的',
     regime_downtrend_defensive: '下跌状态防守',
-    regime_downtrend_cash: '下跌状态空仓'
+    regime_downtrend_cash: '下跌状态空仓',
+    ema_selected: 'EMA 趋势确认',
+    ema_no_asset: 'EMA 无合格标的',
+    price_action_breakout: '价格突破确认',
+    price_action_no_breakout: '无价格突破',
+    fibonacci_retracement: 'Fibonacci 回撤反弹',
+    fibonacci_no_retracement: '无回撤反弹'
   }
   return labels[value || ''] || value || '-'
+}
+
+const failureReasonLabels: Record<string, string> = {
+  test_return_not_positive: '样本外收益不为正',
+  test_excess_not_positive: '样本外未跑赢基准',
+  drawdown_too_high: '样本外回撤过高',
+  too_few_trades: '交易次数不足',
+  performance_too_concentrated: '收益集中在少数切分',
+  failed_2x_cost_stress: '2 倍成本压力测试未过',
+  validation_return_below_threshold: '验证集收益未达标',
+  test_calmar_below_threshold: '样本外 Calmar 未达标',
+  calmar_gap_too_large: '验证/样本外差距过大',
+  walk_forward_too_few_slices: 'walk-forward 样本不足',
+  walk_forward_return_unstable: 'walk-forward 正收益占比不足',
+  walk_forward_excess_unstable: 'walk-forward 超额占比不足'
+}
+
+const scoreComponentLabels: Record<string, string> = {
+  test_calmar: '样本外Calmar',
+  validation_calmar: '验证Calmar',
+  test_excess_return: '样本外超额',
+  validation_excess_return: '验证超额',
+  stress_return: '压力测试',
+  walk_forward: 'WF稳定',
+  drawdown: '回撤',
+  turnover: '换手',
+  calmar_gap: 'Calmar差距',
+  walk_forward_instability: 'WF波动'
+}
+
+function miningModeLabel(value?: string) {
+  return valueLabels[value || ''] || value || '-'
+}
+
+function explanationChecks(row: MiningTrial, passed: boolean): MiningExplanationCheck[] {
+  const checks = passed ? row.explanation?.passed_checks : row.explanation?.failed_checks
+  return Array.isArray(checks) ? checks : []
+}
+
+function checkValueText(item: MiningExplanationCheck) {
+  return `(${formatCheckValue(item.value, item.key)} / ${item.threshold})`
+}
+
+function formatCheckValue(value: number | string, key: string) {
+  if (typeof value !== 'number') return String(value)
+  if (key.includes('return') || key.includes('ratio') || key.includes('drawdown')) return pct(value)
+  if (Number.isInteger(value)) return String(value)
+  return num(value)
+}
+
+function scoreComponentRows(row: MiningTrial, type: 'positive' | 'penalty') {
+  const source = row.explanation?.score_components?.[type] || {}
+  return Object.entries(source).map(([key, value]) => ({
+    key,
+    label: scoreComponentLabels[key] || key,
+    value: Number(value)
+  }))
+}
+
+function topTrialReason(row: MiningTrial) {
+  if (row.accepted) return '通过稳健门槛'
+  const failed = row.explanation?.failed_checks?.[0]
+  if (failed?.label) return failed.label
+  const code = row.reasons?.[0]
+  return failureReasonLabels[code || ''] || code || '-'
+}
+
+function trialDecisionLabel(row: MiningTrial) {
+  return row.accepted ? '已通过：可保存为候选' : `未通过：${topTrialReason(row)}`
 }
 
 function triggerLabel(value?: string) {
@@ -775,8 +1708,40 @@ function paramLabel(key: string) {
 }
 
 function formatParamValue(value: any): string {
+  if (typeof value === 'boolean') return value ? '是' : '否'
   if (Array.isArray(value)) return value.map((item) => valueLabels[String(item)] || String(item)).join(', ')
   return valueLabels[String(value)] || String(value)
+}
+
+function paramStep(field: any) {
+  if (field.step !== undefined) return Number(field.step)
+  const value = singleForm.params[field.key]
+  if (typeof value === 'number' && Math.abs(value) < 1) return 0.01
+  return 1
+}
+
+function paramPrecision(field: any) {
+  const step = String(paramStep(field))
+  return step.includes('.') ? step.split('.')[1].length : 0
+}
+
+function listParamValue(key: string) {
+  const value = singleForm.params[key]
+  return Array.isArray(value) ? value.join(', ') : String(value ?? '')
+}
+
+function updateListParam(key: string, value: string | number) {
+  const text = String(value || '')
+  singleForm.params[key] = text
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      if (key.includes('codes')) return item.padStart(6, '0')
+      const numberValue = Number(item)
+      return Number.isFinite(numberValue) ? numberValue : item
+    })
+  markParamsEdited()
 }
 
 function paramRows(params: Record<string, any>) {
@@ -905,20 +1870,31 @@ const stabilityChartOption = computed<EChartsOption>(() => {
   }
 })
 
+function heatmapXParam(item: MiningTrial) {
+  if (item.strategy_id === 'fibonacci_retracement_rotation') return item.params.lookback
+  return item.params.momentum_window || item.params.lookback || item.params.fast_ema || '-'
+}
+
+function heatmapYParam(item: MiningTrial) {
+  if (item.strategy_id === 'ema_momentum_rotation') return item.params.slow_ema
+  if (item.strategy_id === 'fibonacci_retracement_rotation') return item.params.trend_ema || item.params.fib_high
+  return item.params.trend_ma || item.params.slow_ma || item.params.lookback || item.params.higher_low_window || '-'
+}
+
 const heatmapOption = computed<EChartsOption>(() => {
   const trials = miningTrials.value
-  const xs = Array.from(new Set(trials.map((item) => String(item.params.momentum_window || '-'))))
-  const ys = Array.from(new Set(trials.map((item) => String(item.params.trend_ma || item.params.slow_ma || '-'))))
+  const xs = Array.from(new Set(trials.map((item) => String(heatmapXParam(item)))))
+  const ys = Array.from(new Set(trials.map((item) => String(heatmapYParam(item)))))
   const data = trials.map((item) => [
-    xs.indexOf(String(item.params.momentum_window || '-')),
-    ys.indexOf(String(item.params.trend_ma || item.params.slow_ma || '-')),
+    xs.indexOf(String(heatmapXParam(item))),
+    ys.indexOf(String(heatmapYParam(item))),
     Number(item.score || 0)
   ])
   return {
     tooltip: { position: 'top' },
     grid: { left: 64, right: 24, top: 24, bottom: 48 },
-    xAxis: { type: 'category', data: xs, name: '动量' },
-    yAxis: { type: 'category', data: ys, name: '均线' },
+    xAxis: { type: 'category', data: xs, name: '窗口' },
+    yAxis: { type: 'category', data: ys, name: '过滤' },
     visualMap: { min: Math.min(0, ...data.map((item) => item[2] as number)), max: Math.max(1, ...data.map((item) => item[2] as number)), calculable: true, orient: 'horizontal', left: 'center', bottom: 0 },
     series: [{ type: 'heatmap', data }]
   }
@@ -1055,6 +2031,38 @@ onUnmounted(stopPolling)
   margin-top: 10px;
 }
 
+.concept-explain-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.concept-explain-item {
+  border-left: 3px solid var(--el-color-primary-light-5);
+  background: var(--el-fill-color-lighter);
+  padding: 8px 10px;
+
+  strong {
+    display: block;
+    color: var(--el-text-color-primary);
+    font-size: 13px;
+  }
+
+  p {
+    margin: 4px 0;
+    color: var(--el-text-color-regular);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  small {
+    display: block;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+}
+
 .param-mini-list {
   display: grid;
   grid-template-columns: minmax(84px, auto) minmax(0, 1fr);
@@ -1093,6 +2101,7 @@ onUnmounted(stopPolling)
 }
 
 .control-band,
+.param-panel,
 .table-band,
 .chart-panel,
 .metric-panel {
@@ -1105,6 +2114,106 @@ onUnmounted(stopPolling)
 
 .wide-control {
   width: 280px;
+}
+
+.small-control {
+  width: 120px;
+}
+
+.etf-editor {
+  margin-bottom: 10px;
+}
+
+.table-band .el-tag + .el-tag {
+  margin-left: 4px;
+}
+
+.template-actions {
+  display: inline-flex;
+}
+
+.param-source-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  margin-top: 8px;
+  padding-top: 10px;
+}
+
+.param-source-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+
+  strong {
+    flex: 0 0 auto;
+    font-size: 13px;
+  }
+
+  span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.param-source-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 180px;
+
+  span {
+    border-radius: 999px;
+    background: var(--el-fill-color-light);
+    padding: 2px 8px;
+    color: var(--el-text-color-regular);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+}
+
+.inline-hint {
+  margin-left: 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.param-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 12px;
+}
+
+.param-editor-item {
+  display: grid;
+  grid-template-rows: auto 32px;
+  gap: 4px;
+  min-width: 0;
+
+  label {
+    overflow: hidden;
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    line-height: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.param-control {
+  width: 100%;
+}
+
+.param-switch {
+  align-self: center;
 }
 
 .section-title {
@@ -1134,12 +2243,52 @@ onUnmounted(stopPolling)
   gap: 12px;
 }
 
+.mining-results-grid {
+  grid-template-columns: 1fr;
+
+  .chart-panel,
+  .metric-panel {
+    min-width: 0;
+  }
+
+  .section-title {
+    margin-bottom: 8px;
+  }
+}
+
 .equity-chart {
   height: 360px;
 }
 
 .heatmap-chart {
   height: 320px;
+}
+
+.mining-results-grid .heatmap-chart {
+  height: 300px;
+}
+
+.mining-trials-panel {
+  overflow: hidden;
+}
+
+.trial-table {
+  width: 100%;
+
+  :deep(.el-table__cell) {
+    vertical-align: middle;
+  }
+}
+
+.trial-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+
+  .el-button {
+    margin-left: 0;
+  }
 }
 
 .mine-status {
@@ -1159,6 +2308,114 @@ onUnmounted(stopPolling)
   }
 }
 
+.auto-mining-explain,
+.mining-policy-grid,
+.trial-explain-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.auto-mining-explain {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-top: 10px;
+}
+
+.auto-mining-step,
+.policy-metric {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  background: var(--el-fill-color-lighter);
+  padding: 8px 10px;
+}
+
+.auto-mining-step {
+  display: grid;
+  gap: 4px;
+
+  strong {
+    color: var(--el-text-color-primary);
+    font-size: 13px;
+  }
+
+  span {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+}
+
+.mining-policy-grid {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.policy-metric {
+  display: grid;
+  gap: 4px;
+
+  span {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+  }
+
+  strong {
+    font-size: 14px;
+  }
+}
+
+.trial-explanation {
+  display: grid;
+  gap: 10px;
+  padding: 4px 8px 10px;
+}
+
+.trial-explanation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  strong {
+    font-size: 13px;
+  }
+
+  span {
+    color: var(--el-text-color-secondary);
+    font-size: 12px;
+  }
+}
+
+.trial-explain-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+
+  h4 {
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  .el-tag {
+    margin: 0 6px 6px 0;
+  }
+}
+
+.score-chip {
+  display: inline-block;
+  border-radius: 999px;
+  margin: 0 6px 6px 0;
+  padding: 2px 8px;
+  font-size: 12px;
+
+  &.positive {
+    background: var(--el-color-success-light-9);
+    color: var(--el-color-success);
+  }
+
+  &.penalty {
+    background: var(--el-color-warning-light-9);
+    color: var(--el-color-warning-dark-2);
+  }
+}
+
 @media (max-width: 1120px) {
   .lab-shell {
     grid-template-columns: 1fr;
@@ -1175,6 +2432,16 @@ onUnmounted(stopPolling)
   .result-grid {
     grid-template-columns: 1fr;
     display: block;
+  }
+
+  .param-source-bar,
+  .param-source-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .param-source-stats {
+    justify-content: flex-start;
   }
 
   .wide-control {

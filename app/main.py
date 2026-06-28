@@ -40,6 +40,7 @@ from app.routers import scheduler as scheduler_router
 from app.services.basics_sync_service import get_basics_sync_service
 from app.services.multi_source_basics_sync_service import MultiSourceBasicsSyncService
 from app.services.scheduler_service import set_scheduler_instance
+from app.services.paper_strategy_tracker_service import run_paper_strategy_tracking
 from app.worker.tushare_sync_service import (
     run_tushare_basic_info_sync,
     run_tushare_quotes_sync,
@@ -585,6 +586,18 @@ async def lifespan(app: FastAPI):
             logger.info(f"⏸️ 新闻数据同步已添加但暂停: {settings.NEWS_SYNC_CRON}")
         else:
             logger.info(f"📰 新闻数据同步已配置（仅自选股）: {settings.NEWS_SYNC_CRON}")
+
+        scheduler.add_job(
+            run_paper_strategy_tracking,
+            CronTrigger.from_crontab(settings.PAPER_STRATEGY_TRACKING_CRON, timezone=settings.TIMEZONE),
+            id="paper_strategy_tracking",
+            name="ETF策略模拟跟踪",
+        )
+        if not settings.PAPER_STRATEGY_TRACKING_ENABLED:
+            scheduler.pause_job("paper_strategy_tracking")
+            logger.info(f"ETF strategy paper tracking scheduled but paused: {settings.PAPER_STRATEGY_TRACKING_CRON}")
+        else:
+            logger.info(f"ETF strategy paper tracking scheduled: {settings.PAPER_STRATEGY_TRACKING_CRON}")
 
         scheduler.start()
 

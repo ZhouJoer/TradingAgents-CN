@@ -4,14 +4,16 @@ import asyncio
 import json
 import random
 import uuid
+from copy import deepcopy
 from datetime import datetime
 from statistics import median, pstdev
 from typing import Any, Dict, List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from .backtest_service import BacktestService
-from .engine import DEFAULT_ROTATION_UNIVERSE, STRATEGIES
-from .strategy_catalog import STRATEGY_TEMPLATES
+from .engine import STRATEGIES
+from .etf_universe_service import normalize_tags
+from .strategy_catalog import STRATEGY_TEMPLATES, strategy_default_params
 
 
 DEFAULT_SEARCH_SPACE: Dict[str, List[Any]] = {
@@ -114,6 +116,64 @@ AUTO_ROBUST_CONSTRAINTS: Dict[str, Any] = {
     "min_test_calmar": 0.0,
     "max_calmar_gap": 2.5,
 }
+
+
+DISCOVERED_ADAPTIVE_TOPK_PRESET_ID = "industry_momentum_enhanced_adaptive_topk_gap02"
+DISCOVERED_ADAPTIVE_TOPK_PARAMS: Dict[str, Any] = strategy_default_params(
+    "industry_momentum_enhanced",
+    {
+        "top_k": 2,
+        "adaptive_top_k": True,
+        "top_k_score_gap": 0.02,
+    },
+)
+DISCOVERED_ADAPTIVE_TOPK_METRICS: Dict[str, Any] = {
+    "total_return": 5.114146,
+    "annual_return": 0.287063,
+    "max_drawdown": -0.354245,
+    "calmar": 0.810352,
+    "sharpe": 0.946459,
+    "trade_count": 123,
+    "avg_turnover": 0.842643,
+    "commission_ratio": 0.102873,
+    "excess_return": 4.199188,
+}
+
+
+def discovered_adaptive_topk_strategy_pack() -> Dict[str, Any]:
+    return deepcopy(
+        {
+            "pack_id": DISCOVERED_ADAPTIVE_TOPK_PRESET_ID,
+            "version": "2026-06-28",
+            "name": "行业动量增强 · 自适应 Top2 gap=0.02",
+            "strategy_id": "industry_momentum_enhanced",
+            "source": "codex_discovery",
+            "params": DISCOVERED_ADAPTIVE_TOPK_PARAMS,
+            "research_period": {"start_date": "2019-01-01", "end_date": "2026-06-18", "adjust": "qfq"},
+            "cost": {"commission_bps": 5, "slippage_bps": 5},
+            "metrics": DISCOVERED_ADAPTIVE_TOPK_METRICS,
+            "comparison": {
+                "default_top1_total_return": 5.251593,
+                "fixed_top2_total_return": 2.269529,
+                "hybrid_gap02_total_return": DISCOVERED_ADAPTIVE_TOPK_METRICS["total_return"],
+                "top2_signal_count": 23,
+                "signal_count": 91,
+                "entry_offset_return_range": [5.114146, 5.208143],
+                "entry_offset_calmar_range": [0.810352, 0.818086],
+            },
+            "explanation": {
+                "rule": "最多持有 2 个 ETF；当第一名和第二名综合动量分差 <= 0.02 时等权持有 top2，否则只持有 top1。",
+                "why_user_mining_may_be_lower": [
+                    "自动稳健挖掘看的是训练/验证/样本外和 walk-forward，不等于 2019-2026 全周期回测收益。",
+                    "自动稳健挖掘会做 2 倍成本压力测试和回撤/稳定性过滤，分数会惩罚高收益但不稳定的参数。",
+                    "随机挖掘有 max_trials 限制；搜索空间包含多策略、多窗口、多阈值，不保证命中这组固定参数。",
+                    "如果回测日期、ETF 池、复权方式或费用不同，收益口径会明显不同。",
+                ],
+                "risk": "这组参数收益接近默认 top1、集中度更低，但没有超过默认 top1；历史回测不代表未来表现。",
+            },
+            "tags": ["discovered", "adaptive_top_k", "paper_ready"],
+        }
+    )
 
 
 TEMPLATE_SEARCH_KEYS: Dict[str, List[str]] = {
@@ -300,10 +360,54 @@ class MiningService:
         await self.candidates.create_index([("candidate_id", 1)], unique=True, background=True)
         await self.candidates.create_index([("run_id", 1), ("score", -1)], background=True)
         await self.candidates.create_index([("user_id", 1), ("created_at", -1)], background=True)
+        await self.candidates.create_index([("user_id", 1), ("status", 1), ("strategy_id", 1)], background=True)
+        await self.candidates.create_index([("user_id", 1), ("favorite", 1), ("updated_at", -1)], background=True)
+        await self.candidates.create_index([("user_id", 1), ("tags", 1)], background=True)
+        await self.candidates.create_index([("user_id", 1), ("preset_id", 1)], background=True)
 
-    async def list_candidates(self, user_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+    async def list_candidates(
+        self,
+        user_id: str,
+        limit: int = 100,
+        strategy_id: Optional[str] = None,
+        status: str = "active",
+        tag: Optional[str] = None,
+        favorite: Optional[bool] = None,
+        keyword: Optional[str] = None,
+        sort_by: str = "created",
+    ) -> List[Dict[str, Any]]:
         await self.ensure_indexes()
-        return await self.candidates.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(None)
+        query: Dict[str, Any] = {"user_id": user_id}
+        if status and status != "all":
+            query["status"] = status
+        if strategy_id:
+            query["strategy_id"] = strategy_id
+        if tag:
+            query["tags"] = tag
+        if favorite is not None:
+            query["favorite"] = favorite
+        if keyword:
+            text = str(keyword).strip()
+            query["$or"] = [
+                {"name": {"$regex": text, "$options": "i"}},
+                {"strategy_id": {"$regex": text, "$options": "i"}},
+                {"note": {"$regex": text, "$options": "i"}},
+                {"tags": {"$regex": text, "$options": "i"}},
+            ]
+        sort_map = {
+            "score": ("score", -1),
+            "applied": ("last_applied_at", -1),
+            "updated": ("updated_at", -1),
+            "created": ("created_at", -1),
+        }
+        sort_field, sort_direction = sort_map.get(sort_by, sort_map["created"])
+        rows = await (
+            self.candidates.find(query, {"_id": 0})
+            .sort(sort_field, sort_direction)
+            .limit(max(1, min(int(limit or 100), 500)))
+            .to_list(None)
+        )
+        return [self._normalize_candidate(row) for row in rows]
 
     async def save_candidate(self, payload: Dict[str, Any], user_id: str) -> Dict[str, Any]:
         await self.ensure_indexes()
@@ -317,6 +421,14 @@ class MiningService:
             "score": payload.get("score"),
             "metrics": payload.get("metrics") or {},
             "evaluation": payload.get("evaluation") or {},
+            "status": payload.get("status") or "active",
+            "tags": normalize_tags(payload.get("tags")),
+            "note": str(payload.get("note") or ""),
+            "favorite": bool(payload.get("favorite", False)),
+            "source": payload.get("source") or "manual",
+            "universe": [str(code).zfill(6) for code in payload.get("universe") or []],
+            "applied_count": 0,
+            "last_applied_at": None,
             "run_id": payload.get("run_id"),
             "source_run_id": payload.get("run_id"),
             "source_trial_index": payload.get("trial_index"),
@@ -324,8 +436,132 @@ class MiningService:
             "updated_at": now,
         }
         await self.candidates.insert_one(doc)
-        doc.pop("_id", None)
-        return doc
+        return self._normalize_candidate(doc)
+
+    async def save_discovered_adaptive_topk_candidate(
+        self,
+        user_id: str,
+        universe: Optional[List[str]] = None,
+        favorite: bool = True,
+    ) -> Dict[str, Any]:
+        await self.ensure_indexes()
+        now = datetime.utcnow()
+        universe_codes = [str(code).zfill(6) for code in universe or []]
+        pack = discovered_adaptive_topk_strategy_pack()
+        payload = {
+            "name": pack["name"],
+            "strategy_id": pack["strategy_id"],
+            "params": pack["params"],
+            "score": pack["metrics"]["calmar"],
+            "metrics": pack["metrics"],
+            "evaluation": {
+                "source": pack["source"],
+                "pack_id": pack["pack_id"],
+                "period": pack["research_period"],
+                "benchmark": "default_industry_momentum_top1",
+                "comparison": pack["comparison"],
+                "explanation": pack["explanation"],
+            },
+            "status": "active",
+            "tags": pack["tags"],
+            "note": f"{pack['explanation']['rule']} {pack['explanation']['risk']}",
+            "favorite": favorite,
+            "source": pack["source"],
+            "universe": universe_codes,
+            "preset_id": pack["pack_id"],
+            "updated_at": now,
+        }
+        existing = await self.candidates.find_one({"user_id": user_id, "preset_id": DISCOVERED_ADAPTIVE_TOPK_PRESET_ID})
+        if existing:
+            await self.candidates.update_one(
+                {"candidate_id": existing["candidate_id"], "user_id": user_id},
+                {"$set": payload},
+            )
+            doc = await self.candidates.find_one({"candidate_id": existing["candidate_id"], "user_id": user_id}, {"_id": 0})
+            if not doc:
+                raise ValueError("Candidate not found")
+            return self._normalize_candidate(doc)
+
+        doc = {
+            "candidate_id": uuid.uuid4().hex,
+            "user_id": user_id,
+            "applied_count": 0,
+            "last_applied_at": None,
+            "run_id": None,
+            "source_run_id": None,
+            "source_trial_index": None,
+            "created_at": now,
+            **payload,
+        }
+        await self.candidates.insert_one(doc)
+        return self._normalize_candidate(doc)
+
+    async def update_candidate(self, candidate_id: str, payload: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+        await self.ensure_indexes()
+        updates: Dict[str, Any] = {"updated_at": datetime.utcnow()}
+        if "name" in payload and payload["name"] is not None:
+            updates["name"] = str(payload["name"]).strip()
+        if "status" in payload and payload["status"] is not None:
+            updates["status"] = str(payload["status"]).strip() or "active"
+        if "tags" in payload and payload["tags"] is not None:
+            updates["tags"] = normalize_tags(payload["tags"])
+        if "note" in payload and payload["note"] is not None:
+            updates["note"] = str(payload["note"])
+        if "favorite" in payload and payload["favorite"] is not None:
+            updates["favorite"] = bool(payload["favorite"])
+        if "universe" in payload and payload["universe"] is not None:
+            updates["universe"] = [str(code).zfill(6) for code in payload["universe"]]
+        result = await self.candidates.update_one(
+            {"candidate_id": candidate_id, "user_id": user_id},
+            {"$set": updates},
+        )
+        if result.matched_count == 0:
+            raise ValueError("Candidate not found")
+        doc = await self.candidates.find_one({"candidate_id": candidate_id, "user_id": user_id}, {"_id": 0})
+        if not doc:
+            raise ValueError("Candidate not found")
+        return self._normalize_candidate(doc)
+
+    async def delete_candidate(self, candidate_id: str, user_id: str) -> bool:
+        await self.ensure_indexes()
+        result = await self.candidates.delete_one({"candidate_id": candidate_id, "user_id": user_id})
+        return result.deleted_count > 0
+
+    async def apply_candidate(self, candidate_id: str, user_id: str) -> Dict[str, Any]:
+        await self.ensure_indexes()
+        now = datetime.utcnow()
+        result = await self.candidates.update_one(
+            {"candidate_id": candidate_id, "user_id": user_id},
+            {"$inc": {"applied_count": 1}, "$set": {"last_applied_at": now, "updated_at": now}},
+        )
+        if result.matched_count == 0:
+            raise ValueError("Candidate not found")
+        doc = await self.candidates.find_one({"candidate_id": candidate_id, "user_id": user_id}, {"_id": 0})
+        if not doc:
+            raise ValueError("Candidate not found")
+        candidate = self._normalize_candidate(doc)
+        return {
+            "candidate": candidate,
+            "strategy_id": candidate["strategy_id"],
+            "params": candidate["params"],
+            "universe": candidate["universe"],
+        }
+
+    def _normalize_candidate(self, doc: Dict[str, Any]) -> Dict[str, Any]:
+        result = dict(doc)
+        result.pop("_id", None)
+        result.setdefault("name", result.get("strategy_id", "candidate"))
+        result.setdefault("status", "active")
+        result["tags"] = normalize_tags(result.get("tags"))
+        result.setdefault("note", "")
+        result["favorite"] = bool(result.get("favorite", False))
+        result.setdefault("source", "mining" if result.get("run_id") else "manual")
+        result["universe"] = [str(code).zfill(6) for code in result.get("universe") or []]
+        result["applied_count"] = int(result.get("applied_count") or 0)
+        result.setdefault("last_applied_at", None)
+        result.setdefault("metrics", {})
+        result.setdefault("evaluation", {})
+        return result
 
     async def start(self, payload: Dict[str, Any], user_id: str) -> str:
         await self.ensure_indexes()
@@ -388,7 +624,8 @@ class MiningService:
             await self._update(run_id, "running", 5, "loading ETF data")
             start_date = payload["start_date"]
             end_date = payload["end_date"]
-            universe = payload.get("universe") or [item["code"] for item in DEFAULT_ROTATION_UNIVERSE]
+            universe = payload.get("universe") or await self.backtest.default_rotation_codes(user_id)
+            payload["universe"] = universe
             adjust = payload.get("adjust", "qfq")
             records_by_code, warnings = await self.backtest.etf_data.get_history_map(
                 universe,
@@ -448,6 +685,14 @@ class MiningService:
                             "params": item["params"],
                             "score": item["score"],
                             "metrics": item["test_metrics"],
+                            "status": "active",
+                            "tags": [],
+                            "note": "",
+                            "favorite": False,
+                            "source": "mining",
+                            "universe": universe,
+                            "applied_count": 0,
+                            "last_applied_at": None,
                             "evaluation": {
                                 "train_metrics": item["train_metrics"],
                                 "validation_metrics": item["validation_metrics"],
@@ -458,6 +703,7 @@ class MiningService:
                                 "explanation": item.get("explanation") or {},
                             },
                             "created_at": datetime.utcnow(),
+                            "updated_at": datetime.utcnow(),
                         }
                     )
                 await self.candidates.insert_many(docs)
@@ -502,7 +748,7 @@ class MiningService:
         split_plan: Dict[str, Any],
     ) -> Dict[str, Any]:
         common = {
-            "universe": payload.get("universe") or [item["code"] for item in DEFAULT_ROTATION_UNIVERSE],
+            "universe": payload["universe"],
             "initial_cash": float(payload.get("initial_cash", 1_000_000.0)),
             "commission_bps": float(payload.get("commission_bps", 5.0)),
             "slippage_bps": float(payload.get("slippage_bps", 5.0)),

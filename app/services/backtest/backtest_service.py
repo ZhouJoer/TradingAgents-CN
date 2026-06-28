@@ -12,6 +12,7 @@ from .engine import (
     DEFAULT_ROTATION_UNIVERSE,
 )
 from .etf_data_service import ETFDataService
+from .etf_universe_service import ETFUniverseService
 from .strategy_catalog import STRATEGY_DEFINITIONS
 
 
@@ -22,13 +23,23 @@ class BacktestService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.etf_data = ETFDataService(db)
+        self.etf_universe_service = ETFUniverseService(db)
         self.engine = BacktestEngine()
 
     async def strategies(self) -> List[Dict[str, Any]]:
         return STRATEGY_DEFINITIONS
 
-    async def etf_universe(self) -> List[Dict[str, Any]]:
+    async def etf_universe(self, user_id: Optional[str] = None, include_inactive: bool = False) -> List[Dict[str, Any]]:
+        if user_id:
+            return await self.etf_universe_service.list_universe(user_id, include_inactive=include_inactive)
         return await self.etf_data.get_universe()
+
+    async def default_rotation_codes(self, user_id: Optional[str] = None) -> List[str]:
+        if user_id:
+            codes = await self.etf_universe_service.active_rotation_codes(user_id)
+            if codes:
+                return codes
+        return [item["code"] for item in DEFAULT_ROTATION_UNIVERSE]
 
     async def run_backtest(
         self,
@@ -43,8 +54,9 @@ class BacktestService:
         params: Optional[Dict[str, Any]] = None,
         entry_delay_trading_days: int = 0,
         records_by_code: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        codes = self._rotation_codes(universe)
+        codes = await self._resolve_rotation_codes(universe, user_id)
         warnings: List[str] = []
         if records_by_code is None:
             records_by_code, warnings = await self.etf_data.get_history_map(
@@ -88,11 +100,12 @@ class BacktestService:
         offset_start: int = 0,
         offset_end: int = 20,
         offset_step: int = 1,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         if offset_end < offset_start:
             raise ValueError("offset_end must be greater than or equal to offset_start")
 
-        codes = self._rotation_codes(universe)
+        codes = await self._resolve_rotation_codes(universe, user_id)
         records_by_code, warnings = await self.etf_data.get_history_map(
             codes,
             self.warmup_start_date(start_date),
@@ -114,6 +127,7 @@ class BacktestService:
                 params=params or {},
                 entry_delay_trading_days=offset,
                 records_by_code=records_by_code,
+                user_id=user_id,
             )
             curve = result.get("equity_curve") or []
             entry_index = min(max(0, offset), max(0, len(curve) - 1))
@@ -143,8 +157,13 @@ class BacktestService:
             "data_warnings": warnings,
         }
 
-    async def compare(self, requests: List[Dict[str, Any]], common: Dict[str, Any]) -> Dict[str, Any]:
-        codes = self._rotation_codes(common.get("universe"))
+    async def compare(
+        self,
+        requests: List[Dict[str, Any]],
+        common: Dict[str, Any],
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        codes = await self._resolve_rotation_codes(common.get("universe"), user_id)
         records_by_code, warnings = await self.etf_data.get_history_map(
             codes,
             self.warmup_start_date(common["start_date"]),
@@ -165,6 +184,7 @@ class BacktestService:
                 adjust=adjust,
                 params=item.get("params") or {},
                 records_by_code=records_by_code,
+                user_id=user_id,
             )
             result["label"] = item.get("label") or item["strategy_id"]
             results.append(result)
@@ -178,6 +198,11 @@ class BacktestService:
     def _rotation_codes(self, universe: Optional[List[str]]) -> List[str]:
         raw_codes = universe or [item["code"] for item in DEFAULT_ROTATION_UNIVERSE]
         return [str(code).zfill(6) for code in raw_codes]
+
+    async def _resolve_rotation_codes(self, universe: Optional[List[str]], user_id: Optional[str]) -> List[str]:
+        if universe:
+            return self._rotation_codes(universe)
+        return [str(code).zfill(6) for code in await self.default_rotation_codes(user_id)]
 
     def _build_config(
         self,

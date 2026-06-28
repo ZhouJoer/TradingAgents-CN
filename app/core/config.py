@@ -325,6 +325,10 @@ class Settings(BaseSettings):
     NEWS_SYNC_HOURS_BACK: int = Field(default=24)
     NEWS_SYNC_MAX_PER_SOURCE: int = Field(default=50)
 
+    # ETF strategy paper tracking
+    PAPER_STRATEGY_TRACKING_ENABLED: bool = Field(default=True)
+    PAPER_STRATEGY_TRACKING_CRON: str = Field(default="20 15 * * 1-5")
+
     @property
     def is_production(self) -> bool:
         """是否为生产环境"""
