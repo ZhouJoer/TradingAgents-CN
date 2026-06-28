@@ -134,6 +134,38 @@ def _signal_from_scores(
     )
 
 
+def _bool_param(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def _adaptive_top_k_from_score_gap(
+    scores: pd.Series,
+    eligible: pd.Series,
+    top_k: int,
+    params: Dict[str, Any],
+) -> Tuple[int, str]:
+    if not _bool_param(params.get("adaptive_top_k", False)):
+        return top_k, "selected"
+
+    max_top_k = max(1, int(top_k))
+    if max_top_k < 2:
+        return max_top_k, "selected"
+
+    eligible_scores = scores[eligible].replace([np.inf, -np.inf], np.nan).dropna().sort_values(ascending=False)
+    if len(eligible_scores) < 2:
+        return 1, "adaptive_top_k_top1"
+
+    threshold = max(0.0, float(params.get("top_k_score_gap", 0.05) or 0.0))
+    gap = float(eligible_scores.iloc[0] - eligible_scores.iloc[1])
+    if gap <= threshold:
+        return min(2, max_top_k, len(eligible_scores)), "adaptive_top_k_top2"
+    return 1, "adaptive_top_k_top1"
+
+
 def _empty_signal(reason: str) -> StrategySignal:
     return StrategySignal(weights={}, reason=reason)
 
@@ -204,6 +236,10 @@ def _ma(close: pd.DataFrame, window: int) -> pd.DataFrame:
     return close.rolling(window=window, min_periods=window).mean()
 
 
+def _ema(frame: pd.DataFrame | pd.Series, span: int) -> pd.DataFrame | pd.Series:
+    return frame.ewm(span=span, adjust=False, min_periods=span).mean()
+
+
 def _vol(returns: pd.DataFrame, window: int) -> pd.DataFrame:
     return returns.rolling(window=window, min_periods=max(5, window // 2)).std() * sqrt(252)
 
@@ -258,7 +294,8 @@ def _momentum_enhanced(ctx: StrategyContext, date: pd.Timestamp, params: Dict[st
     eligible = _empty_rule_mask(
         ctx, idx, str(params.get("empty_threshold", "trend_filter")), score, ret60, trend_ma, trend_fast_ma
     )
-    return _signal_from_scores(score, eligible, top_k)
+    selected_top_k, reason = _adaptive_top_k_from_score_gap(score, eligible, top_k, params)
+    return _signal_from_scores(score, eligible, selected_top_k, selected_reason=reason)
 
 
 def _vol_adjusted_momentum(ctx: StrategyContext, date: pd.Timestamp, params: Dict[str, Any]) -> StrategySignal:
@@ -325,6 +362,147 @@ def _trend_following_equal_weight(ctx: StrategyContext, date: pd.Timestamp, para
     else:
         eligible = (ctx.close.iloc[idx] > ma_slow) & (ma_fast > ma_slow) & (ret > 0)
     return _signal_from_scores(ret, eligible, top_k)
+
+
+def _ema_momentum_rotation(ctx: StrategyContext, date: pd.Timestamp, params: Dict[str, Any]) -> StrategySignal:
+    idx = ctx.close.index.get_loc(date)
+    top_k = int(params.get("top_k", 2))
+    fast_span = int(params.get("fast_ema", 20))
+    slow_span = int(params.get("slow_ema", 120))
+    momentum_window = int(params.get("momentum_window", 60))
+    if idx < max(fast_span, slow_span, momentum_window):
+        return _empty_signal("warmup")
+
+    fast = _ema(ctx.close, fast_span).iloc[idx]
+    slow = _ema(ctx.close, slow_span).iloc[idx]
+    ret = _ret(ctx.close, idx, momentum_window)
+    vol = _vol(ctx.returns, int(params.get("vol_window", momentum_window))).iloc[idx]
+    trend_strength = fast / slow.replace(0, np.nan) - 1.0
+    score = ret + float(params.get("trend_weight", 0.5)) * trend_strength
+    score = score - float(params.get("vol_penalty", 0.02)) * vol
+    eligible = (ctx.close.iloc[idx] > slow) & (fast > slow) & (ret > float(params.get("min_momentum", 0.0)))
+    return _signal_from_scores(score, eligible, top_k, empty_reason="ema_no_asset", selected_reason="ema_selected")
+
+
+def _price_action_breakout_rotation(
+    ctx: StrategyContext, date: pd.Timestamp, params: Dict[str, Any]
+) -> StrategySignal:
+    idx = ctx.close.index.get_loc(date)
+    top_k = int(params.get("top_k", 2))
+    lookback = int(params.get("lookback", 60))
+    momentum_window = int(params.get("momentum_window", 20))
+    higher_low_window = int(params.get("higher_low_window", 10))
+    warmup = max(lookback + 1, momentum_window, higher_low_window * 2)
+    if idx < warmup:
+        return _empty_signal("warmup")
+
+    close_now = ctx.close.iloc[idx]
+    prev_high = ctx.high.iloc[idx - lookback : idx].max()
+    prev_low = ctx.low.iloc[idx - lookback : idx].min()
+    range_width = (prev_high - prev_low).replace(0, np.nan)
+    range_position = (close_now - prev_low) / range_width
+    ret = _ret(ctx.close, idx, momentum_window)
+    vol = _vol(ctx.returns, int(params.get("vol_window", momentum_window))).iloc[idx]
+    breakout_strength = close_now / prev_high.replace(0, np.nan) - 1.0
+
+    recent_low = ctx.low.iloc[idx - higher_low_window + 1 : idx + 1].min()
+    previous_low = ctx.low.iloc[idx - higher_low_window * 2 + 1 : idx - higher_low_window + 1].min()
+    higher_low = recent_low > previous_low
+    eligible = (close_now >= prev_high * float(params.get("breakout_buffer", 0.99))) & (
+        ret > float(params.get("min_momentum", 0.0))
+    )
+    if bool(params.get("require_higher_low", True)):
+        eligible = eligible & higher_low
+
+    score = ret + float(params.get("breakout_weight", 1.5)) * breakout_strength
+    score = score + float(params.get("range_weight", 0.05)) * range_position
+    score = score - float(params.get("vol_penalty", 0.02)) * vol
+    return _signal_from_scores(
+        score,
+        eligible,
+        top_k,
+        empty_reason="price_action_no_breakout",
+        selected_reason="price_action_breakout",
+    )
+
+
+def _fibonacci_retracement_rotation(
+    ctx: StrategyContext, date: pd.Timestamp, params: Dict[str, Any]
+) -> StrategySignal:
+    idx = ctx.close.index.get_loc(date)
+    top_k = int(params.get("top_k", 2))
+    lookback = int(params.get("lookback", 120))
+    bounce_days = int(params.get("bounce_days", 3))
+    trend_span = int(params.get("trend_ema", 60))
+    if idx < max(lookback, bounce_days, trend_span):
+        return _empty_signal("warmup")
+
+    fib_low = float(params.get("fib_low", 0.382))
+    fib_high = float(params.get("fib_high", 0.618))
+    zone_tolerance = float(params.get("zone_tolerance", 0.02))
+    min_leg_return = float(params.get("min_leg_return", 0.10))
+    bounce_threshold = float(params.get("bounce_threshold", 0.0))
+    fib_target = (fib_low + fib_high) / 2.0
+    trend_ema = _ema(ctx.close, trend_span).iloc[idx]
+    vol = _vol(ctx.returns, int(params.get("vol_window", 60))).iloc[idx]
+
+    scores = pd.Series(np.nan, index=ctx.close.columns, dtype=float)
+    eligible = pd.Series(False, index=ctx.close.columns)
+    close_now = ctx.close.iloc[idx]
+    close_then = ctx.close.iloc[idx - bounce_days]
+
+    for code in ctx.close.columns:
+        high_slice = ctx.high[code].iloc[idx - lookback + 1 : idx + 1].dropna()
+        low_slice = ctx.low[code].iloc[idx - lookback + 1 : idx + 1].dropna()
+        if high_slice.empty or low_slice.empty:
+            continue
+
+        swing_high_pos = int(np.argmax(high_slice.to_numpy()))
+        lows_before_high = low_slice.iloc[: swing_high_pos + 1]
+        if lows_before_high.empty:
+            continue
+        swing_low_pos = int(np.argmin(lows_before_high.to_numpy()))
+        if swing_high_pos <= swing_low_pos:
+            continue
+
+        swing_high = _clean_float(high_slice.iloc[swing_high_pos])
+        swing_low = _clean_float(lows_before_high.iloc[swing_low_pos])
+        current = _clean_float(close_now.get(code))
+        previous = _clean_float(close_then.get(code))
+        ema_value = _clean_float(trend_ema.get(code))
+        if (
+            swing_high is None
+            or swing_low is None
+            or current is None
+            or previous is None
+            or ema_value is None
+            or swing_low <= 0
+            or previous <= 0
+            or swing_high <= swing_low
+        ):
+            continue
+
+        move = swing_high - swing_low
+        leg_return = move / swing_low
+        retrace = (swing_high - current) / move
+        bounce = current / previous - 1.0
+        in_zone = fib_low - zone_tolerance <= retrace <= fib_high + zone_tolerance
+        if in_zone and current > ema_value and leg_return >= min_leg_return and bounce > bounce_threshold:
+            eligible.at[code] = True
+        scores.at[code] = (
+            leg_return
+            + float(params.get("bounce_weight", 2.0)) * bounce
+            - float(params.get("fib_distance_penalty", 0.25)) * abs(retrace - fib_target)
+            - float(params.get("vol_penalty", 0.02)) * (_clean_float(vol.get(code), 0.0) or 0.0)
+        )
+
+    return _signal_from_scores(
+        scores,
+        eligible,
+        top_k,
+        empty_reason="fibonacci_no_retracement",
+        selected_reason="fibonacci_retracement",
+    )
 
 
 def _adaptive_regime_rotation(ctx: StrategyContext, date: pd.Timestamp, params: Dict[str, Any]) -> StrategySignal:
@@ -511,6 +689,9 @@ STRATEGIES: Dict[str, StrategyFn] = {
     "vol_adjusted_momentum": _vol_adjusted_momentum,
     "dual_momentum_core": _dual_momentum_core,
     "trend_following_equal_weight": _trend_following_equal_weight,
+    "ema_momentum_rotation": _ema_momentum_rotation,
+    "price_action_breakout_rotation": _price_action_breakout_rotation,
+    "fibonacci_retracement_rotation": _fibonacci_retracement_rotation,
     "adaptive_regime_rotation": _adaptive_regime_rotation,
     "biweekly_adaptive_stable_rotation": _adaptive_regime_rotation,
     "donchian_breakout_rotation": _donchian_breakout_rotation,

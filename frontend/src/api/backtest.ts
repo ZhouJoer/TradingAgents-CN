@@ -143,6 +143,8 @@ export interface MiningRun {
   status: 'pending' | 'running' | 'completed' | 'failed'
   progress: number
   message: string
+  mode?: string
+  policy?: Record<string, any>
   trial_count?: number
   candidate_count?: number
   split_plan?: Record<string, any>
@@ -164,6 +166,28 @@ export interface MiningTrial {
   stress_2x_metrics: BacktestMetrics
   walk_forward_slices?: Array<{ label: string; train: Record<string, string>; validation: Record<string, string>; test: Record<string, string>; metrics: BacktestMetrics }>
   walk_forward_summary?: Record<string, number>
+  explanation?: MiningExplanation
+}
+
+export interface MiningExplanationCheck {
+  key: string
+  label: string
+  passed: boolean
+  value: number | string
+  threshold: string
+  failure?: string
+}
+
+export interface MiningExplanation {
+  method?: string
+  decision?: 'accepted' | 'rejected'
+  passed_checks?: MiningExplanationCheck[]
+  failed_checks?: MiningExplanationCheck[]
+  score_components?: {
+    positive?: Record<string, number>
+    penalty?: Record<string, number>
+  }
+  robustness?: Record<string, number>
 }
 
 export interface MiningCandidate {

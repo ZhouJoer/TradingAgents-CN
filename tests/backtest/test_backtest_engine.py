@@ -13,6 +13,7 @@ from app.services.backtest.engine import (
     STRATEGIES,
     StrategyContext,
     StrategySignal,
+    _momentum_enhanced,
     _empty_rule_mask,
     _rebalance_dates,
 )
@@ -75,6 +76,8 @@ def test_strategy_catalog_matches_engine_registry() -> None:
     assert params["trend_fast_ma"] == 20
     assert params["trend_ma"] == 120
     assert params["empty_threshold"] == "trend_filter"
+    assert params["adaptive_top_k"] is False
+    assert params["top_k_score_gap"] == 0.05
 
 
 def test_biweekly_adaptive_strategy_uses_biweekly_ma_cadence() -> None:
@@ -170,6 +173,45 @@ def test_trend_filter_can_require_fast_ma_above_slow_ma() -> None:
 
     assert bool(loose["510300"])
     assert not bool(strict["510300"])
+
+
+def test_momentum_enhanced_adaptive_top_k_uses_score_gap() -> None:
+    dates = pd.bdate_range("2021-01-01", periods=80)
+    close = pd.DataFrame(
+        {
+            "510300": [100 + i * 0.20 for i in range(80)],
+            "510500": [100 + i * 0.19 for i in range(80)],
+            "512800": [100 + i * 0.03 for i in range(80)],
+        },
+        index=dates,
+    )
+    ctx = StrategyContext(
+        close=close,
+        open=close,
+        high=close,
+        low=close,
+        volume=pd.DataFrame(1_000_000, index=dates, columns=close.columns),
+        returns=close.pct_change().replace([float("inf"), float("-inf")], pd.NA).fillna(0),
+    )
+    params = {
+        "top_k": 2,
+        "momentum_windows": [5],
+        "momentum_weights": [1],
+        "absolute_window": 5,
+        "trend_ma": 3,
+        "vol_window": 5,
+        "vol_penalty": 0,
+        "empty_threshold": "ret_gt_0",
+        "adaptive_top_k": True,
+    }
+
+    close_signal = _momentum_enhanced(ctx, dates[-1], {**params, "top_k_score_gap": 0.01})
+    strict_signal = _momentum_enhanced(ctx, dates[-1], {**params, "top_k_score_gap": 0.00001})
+
+    assert close_signal.reason == "adaptive_top_k_top2"
+    assert list(close_signal.weights) == ["510300", "510500"]
+    assert strict_signal.reason == "adaptive_top_k_top1"
+    assert list(strict_signal.weights) == ["510300"]
 
 
 def test_etf_history_standardizes_chinese_columns() -> None:
@@ -404,6 +446,114 @@ def test_rotation_buys_positive_momentum_and_charges_commission() -> None:
     assert result["metrics"]["trade_count"] > 0
     assert all(isclose(trade["commission"], trade["amount"] * 0.0005, rel_tol=1e-4) for trade in buy_trades)
     assert result["diagnostics"]["return_attribution_cost_drag"] < 0
+
+
+def test_ema_momentum_rotation_buys_fast_trending_asset() -> None:
+    engine = BacktestEngine()
+    records_by_code = {
+        "510300": _records([100 + i * 0.40 for i in range(160)]),
+        "510500": _records([100 - i * 0.05 for i in range(160)]),
+    }
+
+    result = engine.run(
+        records_by_code,
+        BacktestConfig(
+            strategy_id="ema_momentum_rotation",
+            start_date="2021-01-01",
+            end_date="2021-08-31",
+            universe=["510300", "510500"],
+            commission_bps=0,
+            slippage_bps=0,
+            params={
+                "rebalance_frequency": "weekly",
+                "top_k": 1,
+                "fast_ema": 5,
+                "slow_ema": 20,
+                "momentum_window": 10,
+                "vol_window": 10,
+                "cash_entry_mode": "rebalance_only",
+            },
+        ),
+    )
+
+    buy_codes = {trade["code"] for trade in result["trades"] if trade["side"] == "buy"}
+    assert buy_codes == {"510300"}
+    assert any(signal["reason"] == "ema_selected" for signal in result["signals"])
+
+
+def test_price_action_breakout_rotation_buys_breakout_asset() -> None:
+    engine = BacktestEngine()
+    records_by_code = {
+        "510300": _records([100 + i * 1.5 for i in range(120)]),
+        "510500": _records([100 for _ in range(120)]),
+    }
+
+    result = engine.run(
+        records_by_code,
+        BacktestConfig(
+            strategy_id="price_action_breakout_rotation",
+            start_date="2021-01-01",
+            end_date="2021-06-30",
+            universe=["510300", "510500"],
+            commission_bps=0,
+            slippage_bps=0,
+            params={
+                "rebalance_frequency": "weekly",
+                "top_k": 1,
+                "lookback": 20,
+                "momentum_window": 5,
+                "higher_low_window": 5,
+                "breakout_buffer": 0.99,
+                "require_higher_low": True,
+                "cash_entry_mode": "rebalance_only",
+            },
+        ),
+    )
+
+    buy_codes = {trade["code"] for trade in result["trades"] if trade["side"] == "buy"}
+    assert buy_codes == {"510300"}
+    assert any(signal["reason"] == "price_action_breakout" for signal in result["signals"])
+
+
+def test_fibonacci_retracement_rotation_buys_retracement_bounce() -> None:
+    engine = BacktestEngine()
+    prices = (
+        [100 + i * 1.5 for i in range(31)]
+        + [145 - i * 1.7 for i in range(14)]
+        + [121.2 + i * 0.8 for i in range(80)]
+    )
+    records_by_code = {
+        "510300": _records(prices),
+        "510500": _records([100 - i * 0.05 for i in range(len(prices))]),
+    }
+
+    result = engine.run(
+        records_by_code,
+        BacktestConfig(
+            strategy_id="fibonacci_retracement_rotation",
+            start_date="2021-01-01",
+            end_date="2021-06-30",
+            universe=["510300", "510500"],
+            commission_bps=0,
+            slippage_bps=0,
+            params={
+                "rebalance_frequency": "weekly",
+                "top_k": 1,
+                "lookback": 40,
+                "fib_low": 0.382,
+                "fib_high": 0.618,
+                "zone_tolerance": 0.08,
+                "bounce_days": 1,
+                "min_leg_return": 0.10,
+                "trend_ema": 2,
+                "cash_entry_mode": "rebalance_only",
+            },
+        ),
+    )
+
+    buy_codes = {trade["code"] for trade in result["trades"] if trade["side"] == "buy"}
+    assert "510300" in buy_codes
+    assert any(signal["reason"] == "fibonacci_retracement" for signal in result["signals"])
 
 
 def test_adaptive_regime_uses_defensive_asset_in_downtrend() -> None:

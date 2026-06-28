@@ -1,0 +1,1929 @@
+{
+  "meta": {
+    "generated_at": "2026-06-21T17:18:01",
+    "database": "tradingagentscn",
+    "start_date": "2019-01-01",
+    "end_date": "2026-06-18",
+    "adjust": "qfq",
+    "universe": [
+      "510300",
+      "510500",
+      "510050",
+      "159915",
+      "159952",
+      "159956",
+      "588000",
+      "512800",
+      "512880",
+      "512480",
+      "512010",
+      "512690",
+      "515790",
+      "516160",
+      "515030",
+      "159928",
+      "512400",
+      "512890",
+      "515100",
+      "515300",
+      "563020",
+      "518880"
+    ],
+    "date_count": 1808,
+    "trial_count": 9,
+    "commission_bps": 5.0,
+    "slippage_bps": 5.0
+  },
+  "coverage": {
+    "510300": {
+      "count": 3000,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    },
+    "510500": {
+      "count": 1925,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    },
+    "510050": {
+      "count": 1926,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    },
+    "159915": {
+      "count": 1925,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    },
+    "159952": {
+      "count": 1924,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    },
+    "159956": {
+      "count": 1925,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    },
+    "588000": {
+      "count": 1355,
+      "start": "2020-11-16",
+      "end": "2026-06-18"
+    },
+    "512800": {
+      "count": 1925,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    },
+    "512880": {
+      "count": 1925,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    },
+    "512480": {
+      "count": 1701,
+      "start": "2019-06-12",
+      "end": "2026-06-18"
+    },
+    "512010": {
+      "count": 1924,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    },
+    "512690": {
+      "count": 1727,
+      "start": "2019-05-06",
+      "end": "2026-06-18"
+    },
+    "515790": {
+      "count": 1331,
+      "start": "2020-12-18",
+      "end": "2026-06-18"
+    },
+    "516160": {
+      "count": 1298,
+      "start": "2021-02-04",
+      "end": "2026-06-18"
+    },
+    "515030": {
+      "count": 1525,
+      "start": "2020-03-04",
+      "end": "2026-06-18"
+    },
+    "159928": {
+      "count": 1926,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    },
+    "512400": {
+      "count": 1925,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    },
+    "512890": {
+      "count": 1794,
+      "start": "2019-01-18",
+      "end": "2026-06-18"
+    },
+    "515100": {
+      "count": 1444,
+      "start": "2020-07-03",
+      "end": "2026-06-18"
+    },
+    "515300": {
+      "count": 1632,
+      "start": "2019-09-19",
+      "end": "2026-06-18"
+    },
+    "563020": {
+      "count": 606,
+      "start": "2023-12-14",
+      "end": "2026-06-18"
+    },
+    "518880": {
+      "count": 1925,
+      "start": "2018-07-10",
+      "end": "2026-06-18"
+    }
+  },
+  "warnings": [],
+  "split_plan": {
+    "holdout": {
+      "train": {
+        "start_date": "2019-01-02",
+        "end_date": "2023-06-20"
+      },
+      "validation": {
+        "start_date": "2023-06-21",
+        "end_date": "2024-12-17"
+      },
+      "test": {
+        "start_date": "2024-12-18",
+        "end_date": "2026-06-18"
+      }
+    },
+    "walk_forward": [
+      {
+        "label": "WF1",
+        "train": {
+          "start_date": "2019-01-02",
+          "end_date": "2021-01-26"
+        },
+        "validation": {
+          "start_date": "2021-01-27",
+          "end_date": "2021-08-04"
+        },
+        "test": {
+          "start_date": "2021-08-05",
+          "end_date": "2022-02-15"
+        }
+      },
+      {
+        "label": "WF2",
+        "train": {
+          "start_date": "2019-07-11",
+          "end_date": "2021-08-04"
+        },
+        "validation": {
+          "start_date": "2021-08-05",
+          "end_date": "2022-02-15"
+        },
+        "test": {
+          "start_date": "2022-02-16",
+          "end_date": "2022-08-18"
+        }
+      },
+      {
+        "label": "WF3",
+        "train": {
+          "start_date": "2020-01-14",
+          "end_date": "2022-02-15"
+        },
+        "validation": {
+          "start_date": "2022-02-16",
+          "end_date": "2022-08-18"
+        },
+        "test": {
+          "start_date": "2022-08-19",
+          "end_date": "2023-02-28"
+        }
+      },
+      {
+        "label": "WF4",
+        "train": {
+          "start_date": "2020-07-24",
+          "end_date": "2022-08-18"
+        },
+        "validation": {
+          "start_date": "2022-08-19",
+          "end_date": "2023-02-28"
+        },
+        "test": {
+          "start_date": "2023-03-01",
+          "end_date": "2023-08-31"
+        }
+      }
+    ]
+  },
+  "baselines": [
+    {
+      "strategy_id": "industry_momentum_enhanced",
+      "params": {
+        "rebalance_frequency": "monthly",
+        "top_k": 1,
+        "momentum_windows": [
+          40,
+          120,
+          250
+        ],
+        "momentum_weights": [
+          0.3,
+          0.5,
+          0.2
+        ],
+        "absolute_window": 60,
+        "trend_fast_ma": 20,
+        "trend_ma": 120,
+        "vol_window": 60,
+        "vol_penalty": 0.03,
+        "empty_threshold": "trend_filter",
+        "cash_entry_mode": "daily_when_cash"
+      },
+      "test_metrics": {
+        "total_return": 0.971819,
+        "annual_return": 0.60423,
+        "annual_volatility": 0.374847,
+        "sharpe": 1.449828,
+        "max_drawdown": -0.297495,
+        "calmar": 2.031057,
+        "win_rate": 0.533149,
+        "trade_count": 19,
+        "avg_turnover": 0.999027,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 11943.7172,
+        "commission_ratio": 0.011944,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.664712
+      },
+      "full_metrics": {
+        "total_return": 5.251593,
+        "annual_return": 0.291058,
+        "annual_volatility": 0.326322,
+        "sharpe": 0.946665,
+        "max_drawdown": -0.351307,
+        "calmar": 0.828499,
+        "win_rate": 0.518252,
+        "trade_count": 81,
+        "avg_turnover": 0.889237,
+        "cash_days_ratio": 0.002765,
+        "total_commission": 110583.7102,
+        "commission_ratio": 0.110584,
+        "benchmark_return": 0.914958,
+        "excess_return": 4.336635
+      }
+    },
+    {
+      "strategy_id": "biweekly_adaptive_stable_rotation",
+      "params": {
+        "rebalance_frequency": "biweekly",
+        "top_k": 2,
+        "top_k_uptrend": 2,
+        "top_k_range": 2,
+        "top_k_downtrend": 1,
+        "momentum_windows": [
+          20,
+          60,
+          120
+        ],
+        "momentum_weights": [
+          0.25,
+          0.45,
+          0.3
+        ],
+        "absolute_window": 20,
+        "trend_fast_ma": 10,
+        "trend_ma": 60,
+        "vol_window": 20,
+        "vol_penalty": 0.04,
+        "regime_fast_ma": 10,
+        "regime_slow_ma": 120,
+        "regime_momentum_window": 60,
+        "regime_up_threshold": 0.015,
+        "regime_down_threshold": -0.025,
+        "range_window": 20,
+        "range_ma": 60,
+        "range_vol_window": 20,
+        "range_vol_penalty": 0.02,
+        "defensive_codes": [
+          "518880",
+          "512890",
+          "515100",
+          "515300",
+          "563020"
+        ],
+        "defensive_window": 60,
+        "defensive_ma": 120,
+        "min_holding_days": 20,
+        "rank_switch_buffer": 2,
+        "rebalance_turnover_threshold": 0.18,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "test_metrics": {
+        "total_return": 0.135183,
+        "annual_return": 0.092278,
+        "annual_volatility": 0.260186,
+        "sharpe": 0.469949,
+        "max_drawdown": -0.217087,
+        "calmar": 0.425071,
+        "win_rate": 0.533149,
+        "trade_count": 106,
+        "avg_turnover": 0.796567,
+        "cash_days_ratio": 0.008287,
+        "total_commission": 16309.1236,
+        "commission_ratio": 0.016309,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.171924
+      },
+      "full_metrics": {
+        "total_return": 1.487971,
+        "annual_return": 0.135463,
+        "annual_volatility": 0.25205,
+        "sharpe": 0.630027,
+        "max_drawdown": -0.330633,
+        "calmar": 0.40971,
+        "win_rate": 0.515487,
+        "trade_count": 384,
+        "avg_turnover": 0.707312,
+        "cash_days_ratio": 0.008296,
+        "total_commission": 130284.1366,
+        "commission_ratio": 0.130284,
+        "benchmark_return": 0.914958,
+        "excess_return": 0.573013
+      }
+    },
+    {
+      "strategy_id": "dual_momentum_core",
+      "params": {
+        "rebalance_frequency": "monthly",
+        "top_k": 2,
+        "momentum_window": 120,
+        "trend_ma": 60,
+        "empty_threshold": "trend_filter",
+        "cash_entry_mode": "daily_when_cash"
+      },
+      "test_metrics": {
+        "total_return": 0.51768,
+        "annual_return": 0.336981,
+        "annual_volatility": 0.3001,
+        "sharpe": 1.118872,
+        "max_drawdown": -0.279829,
+        "calmar": 1.204242,
+        "win_rate": 0.530387,
+        "trade_count": 59,
+        "avg_turnover": 1.162294,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 12529.8586,
+        "commission_ratio": 0.01253,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.210573
+      },
+      "full_metrics": {
+        "total_return": 1.901285,
+        "annual_return": 0.160048,
+        "annual_volatility": 0.26485,
+        "sharpe": 0.693698,
+        "max_drawdown": -0.446708,
+        "calmar": 0.358284,
+        "win_rate": 0.518252,
+        "trade_count": 255,
+        "avg_turnover": 0.991588,
+        "cash_days_ratio": 0.013827,
+        "total_commission": 89544.9496,
+        "commission_ratio": 0.089545,
+        "benchmark_return": 0.914958,
+        "excess_return": 0.986327
+      }
+    },
+    {
+      "strategy_id": "trend_following_equal_weight",
+      "params": {
+        "rebalance_frequency": "monthly",
+        "top_k": 5,
+        "fast_ma": 20,
+        "slow_ma": 60,
+        "score_window": 60,
+        "empty_threshold": "trend_filter",
+        "cash_entry_mode": "daily_when_cash"
+      },
+      "test_metrics": {
+        "total_return": 0.500758,
+        "annual_return": 0.326586,
+        "annual_volatility": 0.255606,
+        "sharpe": 1.234701,
+        "max_drawdown": -0.215802,
+        "calmar": 1.513363,
+        "win_rate": 0.552486,
+        "trade_count": 126,
+        "avg_turnover": 1.013095,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 11661.4721,
+        "commission_ratio": 0.011661,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.193651
+      },
+      "full_metrics": {
+        "total_return": 2.168912,
+        "annual_return": 0.174403,
+        "annual_volatility": 0.227908,
+        "sharpe": 0.819949,
+        "max_drawdown": -0.368539,
+        "calmar": 0.473228,
+        "win_rate": 0.532633,
+        "trade_count": 521,
+        "avg_turnover": 1.057083,
+        "cash_days_ratio": 0.002765,
+        "total_commission": 103922.9309,
+        "commission_ratio": 0.103923,
+        "benchmark_return": 0.914958,
+        "excess_return": 1.253954
+      }
+    }
+  ],
+  "family_summary": [
+    {
+      "strategy_id": "ema_momentum_rotation",
+      "trial_count": 4,
+      "accepted_count": 3,
+      "median_test_return": 0.476872,
+      "median_test_excess": 0.169764,
+      "best_score": 0.835367,
+      "best_test_metrics": {
+        "total_return": 0.541532,
+        "annual_return": 0.351574,
+        "annual_volatility": 0.323359,
+        "sharpe": 1.094751,
+        "max_drawdown": -0.237279,
+        "calmar": 1.481691,
+        "win_rate": 0.533149,
+        "trade_count": 59,
+        "avg_turnover": 1.161731,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 13261.8865,
+        "commission_ratio": 0.013262,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.234425
+      },
+      "best_params": {
+        "rebalance_frequency": "monthly",
+        "top_k": 2,
+        "fast_ema": 20,
+        "slow_ema": 120,
+        "momentum_window": 60,
+        "vol_window": 60,
+        "trend_weight": 0.5,
+        "vol_penalty": 0.02,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      }
+    },
+    {
+      "strategy_id": "fibonacci_retracement_rotation",
+      "trial_count": 1,
+      "accepted_count": 0,
+      "median_test_return": -0.138251,
+      "median_test_excess": -0.445358,
+      "best_score": -1.218291,
+      "best_test_metrics": {
+        "total_return": -0.138251,
+        "annual_return": -0.098395,
+        "annual_volatility": 0.163303,
+        "sharpe": -0.55323,
+        "max_drawdown": -0.226391,
+        "calmar": -0.434622,
+        "win_rate": 0.287293,
+        "trade_count": 125,
+        "avg_turnover": 0.961985,
+        "cash_days_ratio": 0.428177,
+        "total_commission": 32699.5016,
+        "commission_ratio": 0.0327,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.445358
+      },
+      "best_params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 2,
+        "lookback": 120,
+        "fib_low": 0.382,
+        "fib_high": 0.618,
+        "zone_tolerance": 0.02,
+        "bounce_days": 3,
+        "min_leg_return": 0.1,
+        "trend_ema": 60,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      }
+    },
+    {
+      "strategy_id": "price_action_breakout_rotation",
+      "trial_count": 4,
+      "accepted_count": 0,
+      "median_test_return": -0.115489,
+      "median_test_excess": -0.422596,
+      "best_score": -0.892523,
+      "best_test_metrics": {
+        "total_return": -0.089242,
+        "annual_return": -0.063001,
+        "annual_volatility": 0.221965,
+        "sharpe": -0.182492,
+        "max_drawdown": -0.278575,
+        "calmar": -0.226155,
+        "win_rate": 0.328729,
+        "trade_count": 150,
+        "avg_turnover": 0.961869,
+        "cash_days_ratio": 0.378453,
+        "total_commission": 40644.7243,
+        "commission_ratio": 0.040645,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.396349
+      },
+      "best_params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 2,
+        "lookback": 60,
+        "momentum_window": 20,
+        "higher_low_window": 10,
+        "breakout_buffer": 0.99,
+        "require_higher_low": true,
+        "vol_penalty": 0.02,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      }
+    }
+  ],
+  "top_trials": [
+    {
+      "trial_index": 1,
+      "strategy_id": "ema_momentum_rotation",
+      "family": "ema",
+      "params": {
+        "rebalance_frequency": "monthly",
+        "top_k": 2,
+        "fast_ema": 20,
+        "slow_ema": 120,
+        "momentum_window": 60,
+        "vol_window": 60,
+        "trend_weight": 0.5,
+        "vol_penalty": 0.02,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": 0.835367,
+      "accepted": true,
+      "reasons": [],
+      "train_metrics": {
+        "total_return": 0.7217,
+        "annual_return": 0.134628,
+        "annual_volatility": 0.280546,
+        "sharpe": 0.591109,
+        "max_drawdown": -0.409948,
+        "calmar": 0.328403,
+        "win_rate": 0.52952,
+        "trade_count": 156,
+        "avg_turnover": 1.005803,
+        "cash_days_ratio": 0.00369,
+        "total_commission": 52002.5776,
+        "commission_ratio": 0.052003,
+        "benchmark_return": 0.412988,
+        "excess_return": 0.308712
+      },
+      "validation_metrics": {
+        "total_return": -0.020839,
+        "annual_return": -0.014553,
+        "annual_volatility": 0.192163,
+        "sharpe": 0.019483,
+        "max_drawdown": -0.181291,
+        "calmar": -0.080275,
+        "win_rate": 0.502762,
+        "trade_count": 55,
+        "avg_turnover": 1.157819,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 11154.2174,
+        "commission_ratio": 0.011154,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.073237
+      },
+      "test_metrics": {
+        "total_return": 0.541532,
+        "annual_return": 0.351574,
+        "annual_volatility": 0.323359,
+        "sharpe": 1.094751,
+        "max_drawdown": -0.237279,
+        "calmar": 1.481691,
+        "win_rate": 0.533149,
+        "trade_count": 59,
+        "avg_turnover": 1.161731,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 13261.8865,
+        "commission_ratio": 0.013262,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.234425
+      },
+      "stress_2x_metrics": {
+        "total_return": 0.507776,
+        "annual_return": 0.330902,
+        "annual_volatility": 0.323093,
+        "sharpe": 1.047634,
+        "max_drawdown": -0.238128,
+        "calmar": 1.389596,
+        "win_rate": 0.530387,
+        "trade_count": 59,
+        "avg_turnover": 1.16058,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 26201.4836,
+        "commission_ratio": 0.026201,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.200669
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": [],
+      "full_metrics": {
+        "total_return": 1.583616,
+        "annual_return": 0.141449,
+        "annual_volatility": 0.274865,
+        "sharpe": 0.619483,
+        "max_drawdown": -0.458681,
+        "calmar": 0.308383,
+        "win_rate": 0.525442,
+        "trade_count": 266,
+        "avg_turnover": 1.070926,
+        "cash_days_ratio": 0.002212,
+        "total_commission": 91485.8949,
+        "commission_ratio": 0.091486,
+        "benchmark_return": 0.914958,
+        "excess_return": 0.668658
+      }
+    },
+    {
+      "trial_index": 5,
+      "strategy_id": "ema_momentum_rotation",
+      "family": "ema",
+      "params": {
+        "rebalance_frequency": "monthly",
+        "top_k": 2,
+        "fast_ema": 20,
+        "slow_ema": 80,
+        "momentum_window": 60,
+        "vol_window": 20,
+        "trend_weight": 0.5,
+        "vol_penalty": 0.02,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": 0.748079,
+      "accepted": true,
+      "reasons": [],
+      "train_metrics": {
+        "total_return": 1.151622,
+        "annual_return": 0.194975,
+        "annual_volatility": 0.276378,
+        "sharpe": 0.783435,
+        "max_drawdown": -0.306643,
+        "calmar": 0.635838,
+        "win_rate": 0.526753,
+        "trade_count": 156,
+        "avg_turnover": 1.021581,
+        "cash_days_ratio": 0.005535,
+        "total_commission": 57814.1063,
+        "commission_ratio": 0.057814,
+        "benchmark_return": 0.412988,
+        "excess_return": 0.738634
+      },
+      "validation_metrics": {
+        "total_return": -0.152335,
+        "annual_return": -0.108678,
+        "annual_volatility": 0.210371,
+        "sharpe": -0.441253,
+        "max_drawdown": -0.288638,
+        "calmar": -0.37652,
+        "win_rate": 0.483425,
+        "trade_count": 50,
+        "avg_turnover": 1.166742,
+        "cash_days_ratio": 0.016575,
+        "total_commission": 10289.1002,
+        "commission_ratio": 0.010289,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.204733
+      },
+      "test_metrics": {
+        "total_return": 0.553699,
+        "annual_return": 0.358992,
+        "annual_volatility": 0.317442,
+        "sharpe": 1.126579,
+        "max_drawdown": -0.237279,
+        "calmar": 1.512952,
+        "win_rate": 0.535912,
+        "trade_count": 60,
+        "avg_turnover": 1.21241,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 13938.2321,
+        "commission_ratio": 0.013938,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.246592
+      },
+      "stress_2x_metrics": {
+        "total_return": 0.518074,
+        "annual_return": 0.337223,
+        "annual_volatility": 0.317155,
+        "sharpe": 1.076345,
+        "max_drawdown": -0.238128,
+        "calmar": 1.416141,
+        "win_rate": 0.533149,
+        "trade_count": 60,
+        "avg_turnover": 1.211261,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 27525.2992,
+        "commission_ratio": 0.027525,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.210967
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": [],
+      "full_metrics": {
+        "total_return": 1.863261,
+        "annual_return": 0.157917,
+        "annual_volatility": 0.27372,
+        "sharpe": 0.673414,
+        "max_drawdown": -0.44731,
+        "calmar": 0.353038,
+        "win_rate": 0.522677,
+        "trade_count": 265,
+        "avg_turnover": 1.090332,
+        "cash_days_ratio": 0.003319,
+        "total_commission": 104771.4617,
+        "commission_ratio": 0.104771,
+        "benchmark_return": 0.914958,
+        "excess_return": 0.948303
+      }
+    },
+    {
+      "trial_index": 4,
+      "strategy_id": "ema_momentum_rotation",
+      "family": "ema",
+      "params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 2,
+        "fast_ema": 30,
+        "slow_ema": 200,
+        "momentum_window": 20,
+        "vol_window": 20,
+        "trend_weight": 0.75,
+        "vol_penalty": 0.04,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": 0.61875,
+      "accepted": true,
+      "reasons": [],
+      "train_metrics": {
+        "total_return": -0.177829,
+        "annual_return": -0.044499,
+        "annual_volatility": 0.250051,
+        "sharpe": -0.056725,
+        "max_drawdown": -0.441352,
+        "calmar": -0.100825,
+        "win_rate": 0.444649,
+        "trade_count": 514,
+        "avg_turnover": 0.716878,
+        "cash_days_ratio": 0.125461,
+        "total_commission": 90341.1389,
+        "commission_ratio": 0.090341,
+        "benchmark_return": 0.412988,
+        "excess_return": -0.590817
+      },
+      "validation_metrics": {
+        "total_return": 0.0413,
+        "annual_return": 0.028573,
+        "annual_volatility": 0.187839,
+        "sharpe": 0.242512,
+        "max_drawdown": -0.153185,
+        "calmar": 0.186528,
+        "win_rate": 0.5,
+        "trade_count": 172,
+        "avg_turnover": 0.829503,
+        "cash_days_ratio": 0.058011,
+        "total_commission": 34656.7707,
+        "commission_ratio": 0.034657,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.011098
+      },
+      "test_metrics": {
+        "total_return": 0.412211,
+        "annual_return": 0.271599,
+        "annual_volatility": 0.321308,
+        "sharpe": 0.908638,
+        "max_drawdown": -0.227896,
+        "calmar": 1.191767,
+        "win_rate": 0.535912,
+        "trade_count": 213,
+        "avg_turnover": 0.822115,
+        "cash_days_ratio": 0.008287,
+        "total_commission": 31862.3703,
+        "commission_ratio": 0.031862,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.105104
+      },
+      "stress_2x_metrics": {
+        "total_return": 0.325781,
+        "annual_return": 0.216905,
+        "annual_volatility": 0.321209,
+        "sharpe": 0.771852,
+        "max_drawdown": -0.236343,
+        "calmar": 0.917757,
+        "win_rate": 0.524862,
+        "trade_count": 211,
+        "avg_turnover": 0.821274,
+        "cash_days_ratio": 0.008287,
+        "total_commission": 61669.0326,
+        "commission_ratio": 0.061669,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.018674
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": [],
+      "full_metrics": {
+        "total_return": 0.229204,
+        "annual_return": 0.029181,
+        "annual_volatility": 0.255416,
+        "sharpe": 0.240374,
+        "max_drawdown": -0.474994,
+        "calmar": 0.061435,
+        "win_rate": 0.475664,
+        "trade_count": 900,
+        "avg_turnover": 0.760428,
+        "cash_days_ratio": 0.086283,
+        "total_commission": 146438.7177,
+        "commission_ratio": 0.146439,
+        "benchmark_return": 0.914958,
+        "excess_return": -0.685754
+      }
+    },
+    {
+      "trial_index": 6,
+      "strategy_id": "ema_momentum_rotation",
+      "family": "ema",
+      "params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 2,
+        "fast_ema": 10,
+        "slow_ema": 120,
+        "momentum_window": 120,
+        "vol_window": 120,
+        "trend_weight": 0.75,
+        "vol_penalty": 0.04,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": 0.086178,
+      "accepted": false,
+      "reasons": [
+        "test_excess_not_positive"
+      ],
+      "train_metrics": {
+        "total_return": 0.504563,
+        "annual_return": 0.099621,
+        "annual_volatility": 0.293217,
+        "sharpe": 0.4709,
+        "max_drawdown": -0.467116,
+        "calmar": 0.213268,
+        "win_rate": 0.499077,
+        "trade_count": 529,
+        "avg_turnover": 0.447687,
+        "cash_days_ratio": 0.02583,
+        "total_commission": 86771.5389,
+        "commission_ratio": 0.086772,
+        "benchmark_return": 0.412988,
+        "excess_return": 0.091575
+      },
+      "validation_metrics": {
+        "total_return": 0.130607,
+        "annual_return": 0.089211,
+        "annual_volatility": 0.220489,
+        "sharpe": 0.496931,
+        "max_drawdown": -0.165609,
+        "calmar": 0.538683,
+        "win_rate": 0.522099,
+        "trade_count": 161,
+        "avg_turnover": 0.465024,
+        "cash_days_ratio": 0.002762,
+        "total_commission": 18999.1933,
+        "commission_ratio": 0.018999,
+        "benchmark_return": 0.052398,
+        "excess_return": 0.078209
+      },
+      "test_metrics": {
+        "total_return": 0.23329,
+        "annual_return": 0.15716,
+        "annual_volatility": 0.323977,
+        "sharpe": 0.612839,
+        "max_drawdown": -0.301593,
+        "calmar": 0.5211,
+        "win_rate": 0.502762,
+        "trade_count": 186,
+        "avg_turnover": 0.474772,
+        "cash_days_ratio": 0.008287,
+        "total_commission": 19505.4041,
+        "commission_ratio": 0.019505,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.073817
+      },
+      "stress_2x_metrics": {
+        "total_return": 0.189317,
+        "annual_return": 0.128281,
+        "annual_volatility": 0.323827,
+        "sharpe": 0.534925,
+        "max_drawdown": -0.304401,
+        "calmar": 0.42142,
+        "win_rate": 0.502762,
+        "trade_count": 187,
+        "avg_turnover": 0.474272,
+        "cash_days_ratio": 0.008287,
+        "total_commission": 38261.4794,
+        "commission_ratio": 0.038261,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.11779
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": [],
+      "full_metrics": {
+        "total_return": 1.179501,
+        "annual_return": 0.114706,
+        "annual_volatility": 0.286873,
+        "sharpe": 0.522312,
+        "max_drawdown": -0.468272,
+        "calmar": 0.244956,
+        "win_rate": 0.506084,
+        "trade_count": 877,
+        "avg_turnover": 0.454096,
+        "cash_days_ratio": 0.015487,
+        "total_commission": 148875.9451,
+        "commission_ratio": 0.148876,
+        "benchmark_return": 0.914958,
+        "excess_return": 0.264543
+      }
+    },
+    {
+      "trial_index": 2,
+      "strategy_id": "price_action_breakout_rotation",
+      "family": "price",
+      "params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 2,
+        "lookback": 60,
+        "momentum_window": 20,
+        "higher_low_window": 10,
+        "breakout_buffer": 0.99,
+        "require_higher_low": true,
+        "vol_penalty": 0.02,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": -0.892523,
+      "accepted": false,
+      "reasons": [
+        "test_return_not_positive",
+        "test_excess_not_positive",
+        "failed_2x_cost_stress"
+      ],
+      "train_metrics": {
+        "total_return": 0.3633,
+        "annual_return": 0.074704,
+        "annual_volatility": 0.212955,
+        "sharpe": 0.444988,
+        "max_drawdown": -0.274857,
+        "calmar": 0.271792,
+        "win_rate": 0.296125,
+        "trade_count": 335,
+        "avg_turnover": 0.822972,
+        "cash_days_ratio": 0.442804,
+        "total_commission": 113980.6937,
+        "commission_ratio": 0.113981,
+        "benchmark_return": 0.412988,
+        "excess_return": -0.049688
+      },
+      "validation_metrics": {
+        "total_return": 0.038727,
+        "annual_return": 0.026803,
+        "annual_volatility": 0.202508,
+        "sharpe": 0.227109,
+        "max_drawdown": -0.128484,
+        "calmar": 0.208609,
+        "win_rate": 0.259669,
+        "trade_count": 87,
+        "avg_turnover": 0.644727,
+        "cash_days_ratio": 0.522099,
+        "total_commission": 24621.1333,
+        "commission_ratio": 0.024621,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.013671
+      },
+      "test_metrics": {
+        "total_return": -0.089242,
+        "annual_return": -0.063001,
+        "annual_volatility": 0.221965,
+        "sharpe": -0.182492,
+        "max_drawdown": -0.278575,
+        "calmar": -0.226155,
+        "win_rate": 0.328729,
+        "trade_count": 150,
+        "avg_turnover": 0.961869,
+        "cash_days_ratio": 0.378453,
+        "total_commission": 40644.7243,
+        "commission_ratio": 0.040645,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.396349
+      },
+      "stress_2x_metrics": {
+        "total_return": -0.157569,
+        "annual_return": -0.112513,
+        "annual_volatility": 0.221774,
+        "sharpe": -0.42748,
+        "max_drawdown": -0.295051,
+        "calmar": -0.381334,
+        "win_rate": 0.320442,
+        "trade_count": 150,
+        "avg_turnover": 0.961111,
+        "cash_days_ratio": 0.378453,
+        "total_commission": 78220.8346,
+        "commission_ratio": 0.078221,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.464676
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": [],
+      "full_metrics": {
+        "total_return": 0.289721,
+        "annual_return": 0.036098,
+        "annual_volatility": 0.212665,
+        "sharpe": 0.272324,
+        "max_drawdown": -0.278575,
+        "calmar": 0.129582,
+        "win_rate": 0.295354,
+        "trade_count": 572,
+        "avg_turnover": 0.81716,
+        "cash_days_ratio": 0.445796,
+        "total_commission": 205103.5234,
+        "commission_ratio": 0.205104,
+        "benchmark_return": 0.914958,
+        "excess_return": -0.625237
+      }
+    }
+  ],
+  "ranked_trials": [
+    {
+      "trial_index": 1,
+      "strategy_id": "ema_momentum_rotation",
+      "family": "ema",
+      "params": {
+        "rebalance_frequency": "monthly",
+        "top_k": 2,
+        "fast_ema": 20,
+        "slow_ema": 120,
+        "momentum_window": 60,
+        "vol_window": 60,
+        "trend_weight": 0.5,
+        "vol_penalty": 0.02,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": 0.835367,
+      "accepted": true,
+      "reasons": [],
+      "train_metrics": {
+        "total_return": 0.7217,
+        "annual_return": 0.134628,
+        "annual_volatility": 0.280546,
+        "sharpe": 0.591109,
+        "max_drawdown": -0.409948,
+        "calmar": 0.328403,
+        "win_rate": 0.52952,
+        "trade_count": 156,
+        "avg_turnover": 1.005803,
+        "cash_days_ratio": 0.00369,
+        "total_commission": 52002.5776,
+        "commission_ratio": 0.052003,
+        "benchmark_return": 0.412988,
+        "excess_return": 0.308712
+      },
+      "validation_metrics": {
+        "total_return": -0.020839,
+        "annual_return": -0.014553,
+        "annual_volatility": 0.192163,
+        "sharpe": 0.019483,
+        "max_drawdown": -0.181291,
+        "calmar": -0.080275,
+        "win_rate": 0.502762,
+        "trade_count": 55,
+        "avg_turnover": 1.157819,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 11154.2174,
+        "commission_ratio": 0.011154,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.073237
+      },
+      "test_metrics": {
+        "total_return": 0.541532,
+        "annual_return": 0.351574,
+        "annual_volatility": 0.323359,
+        "sharpe": 1.094751,
+        "max_drawdown": -0.237279,
+        "calmar": 1.481691,
+        "win_rate": 0.533149,
+        "trade_count": 59,
+        "avg_turnover": 1.161731,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 13261.8865,
+        "commission_ratio": 0.013262,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.234425
+      },
+      "stress_2x_metrics": {
+        "total_return": 0.507776,
+        "annual_return": 0.330902,
+        "annual_volatility": 0.323093,
+        "sharpe": 1.047634,
+        "max_drawdown": -0.238128,
+        "calmar": 1.389596,
+        "win_rate": 0.530387,
+        "trade_count": 59,
+        "avg_turnover": 1.16058,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 26201.4836,
+        "commission_ratio": 0.026201,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.200669
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": []
+    },
+    {
+      "trial_index": 5,
+      "strategy_id": "ema_momentum_rotation",
+      "family": "ema",
+      "params": {
+        "rebalance_frequency": "monthly",
+        "top_k": 2,
+        "fast_ema": 20,
+        "slow_ema": 80,
+        "momentum_window": 60,
+        "vol_window": 20,
+        "trend_weight": 0.5,
+        "vol_penalty": 0.02,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": 0.748079,
+      "accepted": true,
+      "reasons": [],
+      "train_metrics": {
+        "total_return": 1.151622,
+        "annual_return": 0.194975,
+        "annual_volatility": 0.276378,
+        "sharpe": 0.783435,
+        "max_drawdown": -0.306643,
+        "calmar": 0.635838,
+        "win_rate": 0.526753,
+        "trade_count": 156,
+        "avg_turnover": 1.021581,
+        "cash_days_ratio": 0.005535,
+        "total_commission": 57814.1063,
+        "commission_ratio": 0.057814,
+        "benchmark_return": 0.412988,
+        "excess_return": 0.738634
+      },
+      "validation_metrics": {
+        "total_return": -0.152335,
+        "annual_return": -0.108678,
+        "annual_volatility": 0.210371,
+        "sharpe": -0.441253,
+        "max_drawdown": -0.288638,
+        "calmar": -0.37652,
+        "win_rate": 0.483425,
+        "trade_count": 50,
+        "avg_turnover": 1.166742,
+        "cash_days_ratio": 0.016575,
+        "total_commission": 10289.1002,
+        "commission_ratio": 0.010289,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.204733
+      },
+      "test_metrics": {
+        "total_return": 0.553699,
+        "annual_return": 0.358992,
+        "annual_volatility": 0.317442,
+        "sharpe": 1.126579,
+        "max_drawdown": -0.237279,
+        "calmar": 1.512952,
+        "win_rate": 0.535912,
+        "trade_count": 60,
+        "avg_turnover": 1.21241,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 13938.2321,
+        "commission_ratio": 0.013938,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.246592
+      },
+      "stress_2x_metrics": {
+        "total_return": 0.518074,
+        "annual_return": 0.337223,
+        "annual_volatility": 0.317155,
+        "sharpe": 1.076345,
+        "max_drawdown": -0.238128,
+        "calmar": 1.416141,
+        "win_rate": 0.533149,
+        "trade_count": 60,
+        "avg_turnover": 1.211261,
+        "cash_days_ratio": 0.005525,
+        "total_commission": 27525.2992,
+        "commission_ratio": 0.027525,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.210967
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": []
+    },
+    {
+      "trial_index": 4,
+      "strategy_id": "ema_momentum_rotation",
+      "family": "ema",
+      "params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 2,
+        "fast_ema": 30,
+        "slow_ema": 200,
+        "momentum_window": 20,
+        "vol_window": 20,
+        "trend_weight": 0.75,
+        "vol_penalty": 0.04,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": 0.61875,
+      "accepted": true,
+      "reasons": [],
+      "train_metrics": {
+        "total_return": -0.177829,
+        "annual_return": -0.044499,
+        "annual_volatility": 0.250051,
+        "sharpe": -0.056725,
+        "max_drawdown": -0.441352,
+        "calmar": -0.100825,
+        "win_rate": 0.444649,
+        "trade_count": 514,
+        "avg_turnover": 0.716878,
+        "cash_days_ratio": 0.125461,
+        "total_commission": 90341.1389,
+        "commission_ratio": 0.090341,
+        "benchmark_return": 0.412988,
+        "excess_return": -0.590817
+      },
+      "validation_metrics": {
+        "total_return": 0.0413,
+        "annual_return": 0.028573,
+        "annual_volatility": 0.187839,
+        "sharpe": 0.242512,
+        "max_drawdown": -0.153185,
+        "calmar": 0.186528,
+        "win_rate": 0.5,
+        "trade_count": 172,
+        "avg_turnover": 0.829503,
+        "cash_days_ratio": 0.058011,
+        "total_commission": 34656.7707,
+        "commission_ratio": 0.034657,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.011098
+      },
+      "test_metrics": {
+        "total_return": 0.412211,
+        "annual_return": 0.271599,
+        "annual_volatility": 0.321308,
+        "sharpe": 0.908638,
+        "max_drawdown": -0.227896,
+        "calmar": 1.191767,
+        "win_rate": 0.535912,
+        "trade_count": 213,
+        "avg_turnover": 0.822115,
+        "cash_days_ratio": 0.008287,
+        "total_commission": 31862.3703,
+        "commission_ratio": 0.031862,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.105104
+      },
+      "stress_2x_metrics": {
+        "total_return": 0.325781,
+        "annual_return": 0.216905,
+        "annual_volatility": 0.321209,
+        "sharpe": 0.771852,
+        "max_drawdown": -0.236343,
+        "calmar": 0.917757,
+        "win_rate": 0.524862,
+        "trade_count": 211,
+        "avg_turnover": 0.821274,
+        "cash_days_ratio": 0.008287,
+        "total_commission": 61669.0326,
+        "commission_ratio": 0.061669,
+        "benchmark_return": 0.307107,
+        "excess_return": 0.018674
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": []
+    },
+    {
+      "trial_index": 6,
+      "strategy_id": "ema_momentum_rotation",
+      "family": "ema",
+      "params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 2,
+        "fast_ema": 10,
+        "slow_ema": 120,
+        "momentum_window": 120,
+        "vol_window": 120,
+        "trend_weight": 0.75,
+        "vol_penalty": 0.04,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": 0.086178,
+      "accepted": false,
+      "reasons": [
+        "test_excess_not_positive"
+      ],
+      "train_metrics": {
+        "total_return": 0.504563,
+        "annual_return": 0.099621,
+        "annual_volatility": 0.293217,
+        "sharpe": 0.4709,
+        "max_drawdown": -0.467116,
+        "calmar": 0.213268,
+        "win_rate": 0.499077,
+        "trade_count": 529,
+        "avg_turnover": 0.447687,
+        "cash_days_ratio": 0.02583,
+        "total_commission": 86771.5389,
+        "commission_ratio": 0.086772,
+        "benchmark_return": 0.412988,
+        "excess_return": 0.091575
+      },
+      "validation_metrics": {
+        "total_return": 0.130607,
+        "annual_return": 0.089211,
+        "annual_volatility": 0.220489,
+        "sharpe": 0.496931,
+        "max_drawdown": -0.165609,
+        "calmar": 0.538683,
+        "win_rate": 0.522099,
+        "trade_count": 161,
+        "avg_turnover": 0.465024,
+        "cash_days_ratio": 0.002762,
+        "total_commission": 18999.1933,
+        "commission_ratio": 0.018999,
+        "benchmark_return": 0.052398,
+        "excess_return": 0.078209
+      },
+      "test_metrics": {
+        "total_return": 0.23329,
+        "annual_return": 0.15716,
+        "annual_volatility": 0.323977,
+        "sharpe": 0.612839,
+        "max_drawdown": -0.301593,
+        "calmar": 0.5211,
+        "win_rate": 0.502762,
+        "trade_count": 186,
+        "avg_turnover": 0.474772,
+        "cash_days_ratio": 0.008287,
+        "total_commission": 19505.4041,
+        "commission_ratio": 0.019505,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.073817
+      },
+      "stress_2x_metrics": {
+        "total_return": 0.189317,
+        "annual_return": 0.128281,
+        "annual_volatility": 0.323827,
+        "sharpe": 0.534925,
+        "max_drawdown": -0.304401,
+        "calmar": 0.42142,
+        "win_rate": 0.502762,
+        "trade_count": 187,
+        "avg_turnover": 0.474272,
+        "cash_days_ratio": 0.008287,
+        "total_commission": 38261.4794,
+        "commission_ratio": 0.038261,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.11779
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": []
+    },
+    {
+      "trial_index": 2,
+      "strategy_id": "price_action_breakout_rotation",
+      "family": "price",
+      "params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 2,
+        "lookback": 60,
+        "momentum_window": 20,
+        "higher_low_window": 10,
+        "breakout_buffer": 0.99,
+        "require_higher_low": true,
+        "vol_penalty": 0.02,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": -0.892523,
+      "accepted": false,
+      "reasons": [
+        "test_return_not_positive",
+        "test_excess_not_positive",
+        "failed_2x_cost_stress"
+      ],
+      "train_metrics": {
+        "total_return": 0.3633,
+        "annual_return": 0.074704,
+        "annual_volatility": 0.212955,
+        "sharpe": 0.444988,
+        "max_drawdown": -0.274857,
+        "calmar": 0.271792,
+        "win_rate": 0.296125,
+        "trade_count": 335,
+        "avg_turnover": 0.822972,
+        "cash_days_ratio": 0.442804,
+        "total_commission": 113980.6937,
+        "commission_ratio": 0.113981,
+        "benchmark_return": 0.412988,
+        "excess_return": -0.049688
+      },
+      "validation_metrics": {
+        "total_return": 0.038727,
+        "annual_return": 0.026803,
+        "annual_volatility": 0.202508,
+        "sharpe": 0.227109,
+        "max_drawdown": -0.128484,
+        "calmar": 0.208609,
+        "win_rate": 0.259669,
+        "trade_count": 87,
+        "avg_turnover": 0.644727,
+        "cash_days_ratio": 0.522099,
+        "total_commission": 24621.1333,
+        "commission_ratio": 0.024621,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.013671
+      },
+      "test_metrics": {
+        "total_return": -0.089242,
+        "annual_return": -0.063001,
+        "annual_volatility": 0.221965,
+        "sharpe": -0.182492,
+        "max_drawdown": -0.278575,
+        "calmar": -0.226155,
+        "win_rate": 0.328729,
+        "trade_count": 150,
+        "avg_turnover": 0.961869,
+        "cash_days_ratio": 0.378453,
+        "total_commission": 40644.7243,
+        "commission_ratio": 0.040645,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.396349
+      },
+      "stress_2x_metrics": {
+        "total_return": -0.157569,
+        "annual_return": -0.112513,
+        "annual_volatility": 0.221774,
+        "sharpe": -0.42748,
+        "max_drawdown": -0.295051,
+        "calmar": -0.381334,
+        "win_rate": 0.320442,
+        "trade_count": 150,
+        "avg_turnover": 0.961111,
+        "cash_days_ratio": 0.378453,
+        "total_commission": 78220.8346,
+        "commission_ratio": 0.078221,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.464676
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": []
+    },
+    {
+      "trial_index": 9,
+      "strategy_id": "price_action_breakout_rotation",
+      "family": "price",
+      "params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 1,
+        "lookback": 40,
+        "momentum_window": 40,
+        "higher_low_window": 20,
+        "breakout_buffer": 0.97,
+        "require_higher_low": false,
+        "vol_penalty": 0.0,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": -0.971615,
+      "accepted": false,
+      "reasons": [
+        "test_excess_not_positive",
+        "failed_2x_cost_stress"
+      ],
+      "train_metrics": {
+        "total_return": 1.029378,
+        "annual_return": 0.178836,
+        "annual_volatility": 0.306569,
+        "sharpe": 0.690286,
+        "max_drawdown": -0.416102,
+        "calmar": 0.429788,
+        "win_rate": 0.475092,
+        "trade_count": 275,
+        "avg_turnover": 1.174097,
+        "cash_days_ratio": 0.077491,
+        "total_commission": 268751.6732,
+        "commission_ratio": 0.268752,
+        "benchmark_return": 0.412988,
+        "excess_return": 0.61639
+      },
+      "validation_metrics": {
+        "total_return": -0.33665,
+        "annual_return": -0.248534,
+        "annual_volatility": 0.298277,
+        "sharpe": -0.810497,
+        "max_drawdown": -0.398551,
+        "calmar": -0.623593,
+        "win_rate": 0.458564,
+        "trade_count": 89,
+        "avg_turnover": 1.154773,
+        "cash_days_ratio": 0.077348,
+        "total_commission": 38129.5839,
+        "commission_ratio": 0.03813,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.389048
+      },
+      "test_metrics": {
+        "total_return": 0.015009,
+        "annual_return": 0.010424,
+        "annual_volatility": 0.306441,
+        "sharpe": 0.188739,
+        "max_drawdown": -0.31455,
+        "calmar": 0.033141,
+        "win_rate": 0.491713,
+        "trade_count": 113,
+        "avg_turnover": 1.447302,
+        "cash_days_ratio": 0.041436,
+        "total_commission": 64961.2107,
+        "commission_ratio": 0.064961,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.292098
+      },
+      "stress_2x_metrics": {
+        "total_return": -0.093444,
+        "annual_return": -0.066012,
+        "annual_volatility": 0.306696,
+        "sharpe": -0.067538,
+        "max_drawdown": -0.336137,
+        "calmar": -0.196385,
+        "win_rate": 0.477901,
+        "trade_count": 113,
+        "avg_turnover": 1.445887,
+        "cash_days_ratio": 0.041436,
+        "total_commission": 122706.9866,
+        "commission_ratio": 0.122707,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.400551
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": []
+    },
+    {
+      "trial_index": 3,
+      "strategy_id": "fibonacci_retracement_rotation",
+      "family": "fibonacci",
+      "params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 2,
+        "lookback": 120,
+        "fib_low": 0.382,
+        "fib_high": 0.618,
+        "zone_tolerance": 0.02,
+        "bounce_days": 3,
+        "min_leg_return": 0.1,
+        "trend_ema": 60,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": -1.218291,
+      "accepted": false,
+      "reasons": [
+        "test_return_not_positive",
+        "test_excess_not_positive",
+        "performance_too_concentrated",
+        "failed_2x_cost_stress"
+      ],
+      "train_metrics": {
+        "total_return": -0.116585,
+        "annual_return": -0.028406,
+        "annual_volatility": 0.165326,
+        "sharpe": -0.091955,
+        "max_drawdown": -0.433471,
+        "calmar": -0.065531,
+        "win_rate": 0.255535,
+        "trade_count": 300,
+        "avg_turnover": 0.807616,
+        "cash_days_ratio": 0.5,
+        "total_commission": 114471.8921,
+        "commission_ratio": 0.114472,
+        "benchmark_return": 0.412988,
+        "excess_return": -0.529573
+      },
+      "validation_metrics": {
+        "total_return": -0.130678,
+        "annual_return": -0.092887,
+        "annual_volatility": 0.133278,
+        "sharpe": -0.666358,
+        "max_drawdown": -0.229881,
+        "calmar": -0.404065,
+        "win_rate": 0.127072,
+        "trade_count": 71,
+        "avg_turnover": 0.506045,
+        "cash_days_ratio": 0.707182,
+        "total_commission": 18803.7618,
+        "commission_ratio": 0.018804,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.183076
+      },
+      "test_metrics": {
+        "total_return": -0.138251,
+        "annual_return": -0.098395,
+        "annual_volatility": 0.163303,
+        "sharpe": -0.55323,
+        "max_drawdown": -0.226391,
+        "calmar": -0.434622,
+        "win_rate": 0.287293,
+        "trade_count": 125,
+        "avg_turnover": 0.961985,
+        "cash_days_ratio": 0.428177,
+        "total_commission": 32699.5016,
+        "commission_ratio": 0.0327,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.445358
+      },
+      "stress_2x_metrics": {
+        "total_return": -0.20216,
+        "annual_return": -0.145484,
+        "annual_volatility": 0.163543,
+        "sharpe": -0.87994,
+        "max_drawdown": -0.274632,
+        "calmar": -0.529741,
+        "win_rate": 0.276243,
+        "trade_count": 125,
+        "avg_turnover": 0.961267,
+        "cash_days_ratio": 0.428177,
+        "total_commission": 63010.0966,
+        "commission_ratio": 0.06301,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.509267
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": []
+    },
+    {
+      "trial_index": 7,
+      "strategy_id": "price_action_breakout_rotation",
+      "family": "price",
+      "params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 2,
+        "lookback": 120,
+        "momentum_window": 40,
+        "higher_low_window": 5,
+        "breakout_buffer": 1.0,
+        "require_higher_low": true,
+        "vol_penalty": 0.0,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": -1.293399,
+      "accepted": false,
+      "reasons": [
+        "test_return_not_positive",
+        "test_excess_not_positive",
+        "performance_too_concentrated",
+        "failed_2x_cost_stress"
+      ],
+      "train_metrics": {
+        "total_return": -0.093866,
+        "annual_return": -0.022654,
+        "annual_volatility": 0.164318,
+        "sharpe": -0.057446,
+        "max_drawdown": -0.312657,
+        "calmar": -0.072456,
+        "win_rate": 0.132841,
+        "trade_count": 162,
+        "avg_turnover": 0.474055,
+        "cash_days_ratio": 0.743542,
+        "total_commission": 56466.214,
+        "commission_ratio": 0.056466,
+        "benchmark_return": 0.412988,
+        "excess_return": -0.506854
+      },
+      "validation_metrics": {
+        "total_return": -0.217496,
+        "annual_return": -0.156951,
+        "annual_volatility": 0.19072,
+        "sharpe": -0.795045,
+        "max_drawdown": -0.2573,
+        "calmar": -0.609993,
+        "win_rate": 0.107735,
+        "trade_count": 35,
+        "avg_turnover": 0.350416,
+        "cash_days_ratio": 0.790055,
+        "total_commission": 12794.3634,
+        "commission_ratio": 0.012794,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.269894
+      },
+      "test_metrics": {
+        "total_return": -0.141736,
+        "annual_return": -0.100934,
+        "annual_volatility": 0.193509,
+        "sharpe": -0.452862,
+        "max_drawdown": -0.213133,
+        "calmar": -0.473573,
+        "win_rate": 0.179558,
+        "trade_count": 82,
+        "avg_turnover": 0.666198,
+        "cash_days_ratio": 0.668508,
+        "total_commission": 25522.5775,
+        "commission_ratio": 0.025523,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.448843
+      },
+      "stress_2x_metrics": {
+        "total_return": -0.186758,
+        "annual_return": -0.134034,
+        "annual_volatility": 0.193805,
+        "sharpe": -0.645286,
+        "max_drawdown": -0.236932,
+        "calmar": -0.565706,
+        "win_rate": 0.174033,
+        "trade_count": 82,
+        "avg_turnover": 0.665729,
+        "cash_days_ratio": 0.668508,
+        "total_commission": 49724.7221,
+        "commission_ratio": 0.049725,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.493865
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": []
+    },
+    {
+      "trial_index": 8,
+      "strategy_id": "price_action_breakout_rotation",
+      "family": "price",
+      "params": {
+        "rebalance_frequency": "weekly",
+        "top_k": 1,
+        "lookback": 60,
+        "momentum_window": 40,
+        "higher_low_window": 5,
+        "breakout_buffer": 1.0,
+        "require_higher_low": true,
+        "vol_penalty": 0.04,
+        "cash_entry_mode": "daily_when_cash",
+        "cash_entry_confirmations": 2,
+        "min_days_to_rebalance_for_cash_entry": 2
+      },
+      "score": -1.555112,
+      "accepted": false,
+      "reasons": [
+        "test_return_not_positive",
+        "test_excess_not_positive",
+        "performance_too_concentrated",
+        "failed_2x_cost_stress"
+      ],
+      "train_metrics": {
+        "total_return": 0.460855,
+        "annual_return": 0.092111,
+        "annual_volatility": 0.209944,
+        "sharpe": 0.524917,
+        "max_drawdown": -0.1984,
+        "calmar": 0.464268,
+        "win_rate": 0.186347,
+        "trade_count": 140,
+        "avg_turnover": 0.585377,
+        "cash_days_ratio": 0.658672,
+        "total_commission": 90804.4647,
+        "commission_ratio": 0.090804,
+        "benchmark_return": 0.412988,
+        "excess_return": 0.047867
+      },
+      "validation_metrics": {
+        "total_return": -0.260354,
+        "annual_return": -0.189369,
+        "annual_volatility": 0.195437,
+        "sharpe": -0.971248,
+        "max_drawdown": -0.270697,
+        "calmar": -0.699562,
+        "win_rate": 0.127072,
+        "trade_count": 34,
+        "avg_turnover": 0.435603,
+        "cash_days_ratio": 0.740331,
+        "total_commission": 15723.7047,
+        "commission_ratio": 0.015724,
+        "benchmark_return": 0.052398,
+        "excess_return": -0.312752
+      },
+      "test_metrics": {
+        "total_return": -0.277375,
+        "annual_return": -0.202401,
+        "annual_volatility": 0.231742,
+        "sharpe": -0.858099,
+        "max_drawdown": -0.302532,
+        "calmar": -0.669023,
+        "win_rate": 0.19337,
+        "trade_count": 59,
+        "avg_turnover": 0.719006,
+        "cash_days_ratio": 0.621547,
+        "total_commission": 26517.8739,
+        "commission_ratio": 0.026518,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.584482
+      },
+      "stress_2x_metrics": {
+        "total_return": -0.318776,
+        "annual_return": -0.234496,
+        "annual_volatility": 0.232062,
+        "sharpe": -1.033352,
+        "max_drawdown": -0.340517,
+        "calmar": -0.688646,
+        "win_rate": 0.187845,
+        "trade_count": 59,
+        "avg_turnover": 0.718501,
+        "cash_days_ratio": 0.621547,
+        "total_commission": 51570.2349,
+        "commission_ratio": 0.05157,
+        "benchmark_return": 0.307107,
+        "excess_return": -0.625883
+      },
+      "walk_forward_summary": {
+        "sample_count": 0
+      },
+      "walk_forward_slices": []
+    }
+  ]
+}

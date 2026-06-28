@@ -62,6 +62,7 @@ class MiningRequest(BaseModel):
     start_date: str
     end_date: str
     universe: Optional[List[str]] = None
+    mode: str = Field(default="custom", pattern="^(custom|auto_robust)$")
     templates: List[str] = Field(default_factory=lambda: list(DEFAULT_TEMPLATES))
     search_method: str = Field(default="random", pattern="^(random|grid)$")
     search_space: Dict[str, List[Any]] = Field(default_factory=lambda: dict(DEFAULT_SEARCH_SPACE))

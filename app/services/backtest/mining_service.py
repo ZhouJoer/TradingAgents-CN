@@ -16,15 +16,32 @@ from .strategy_catalog import STRATEGY_TEMPLATES
 
 DEFAULT_SEARCH_SPACE: Dict[str, List[Any]] = {
     "momentum_window": [10, 20, 40, 60, 120, 250],
+    "lookback": [20, 40, 60, 120, 180, 250],
     "absolute_window": [10, 20, 40, 60, 120],
     "trend_fast_ma": [0, 10, 20, 40, 60],
     "trend_ma": [20, 60, 120, 200],
+    "fast_ema": [10, 20, 30, 40, 60],
+    "slow_ema": [50, 80, 120, 200],
+    "trend_ema": [20, 60, 120],
+    "trend_weight": [0.25, 0.5, 0.75],
     "vol_window": [20, 60, 120],
+    "min_momentum": [0.0, 0.02],
+    "higher_low_window": [5, 10, 20],
+    "breakout_buffer": [0.97, 0.99, 1.0],
+    "require_higher_low": [True, False],
+    "fib_low": [0.236, 0.382],
+    "fib_high": [0.5, 0.618, 0.786],
+    "zone_tolerance": [0.0, 0.02, 0.05],
+    "bounce_days": [1, 3, 5],
+    "bounce_threshold": [0.0, 0.01],
+    "min_leg_return": [0.08, 0.15, 0.25],
     "regime_fast_ma": [10, 20, 40, 60],
     "regime_slow_ma": [120, 200, 250],
     "regime_momentum_window": [40, 60, 120],
     "rebalance_frequency": ["weekly", "biweekly", "monthly"],
     "top_k": [1, 2, 3, 5],
+    "adaptive_top_k": [False, True],
+    "top_k_score_gap": [0.02, 0.05, 0.08, 0.10],
     "top_k_uptrend": [1, 2],
     "top_k_range": [1, 2, 3],
     "top_k_downtrend": [0, 1, 2],
@@ -38,13 +55,73 @@ DEFAULT_SEARCH_SPACE: Dict[str, List[Any]] = {
 }
 
 
-DEFAULT_TEMPLATES = list(STRATEGY_TEMPLATES.keys())
+DEFAULT_TEMPLATES = [
+    strategy_id
+    for strategy_id in STRATEGY_TEMPLATES
+    if strategy_id != "fibonacci_retracement_rotation"
+]
+
+AUTO_ROBUST_TEMPLATES = [
+    "industry_momentum_enhanced",
+    "biweekly_adaptive_stable_rotation",
+    "dual_momentum_core",
+    "trend_following_equal_weight",
+    "ema_momentum_rotation",
+    "price_action_breakout_rotation",
+]
+
+AUTO_ROBUST_SEARCH_SPACE: Dict[str, List[Any]] = {
+    "momentum_window": [20, 40, 60, 120],
+    "lookback": [40, 60, 120, 180],
+    "absolute_window": [20, 40, 60],
+    "trend_fast_ma": [10, 20, 40],
+    "trend_ma": [60, 120, 200],
+    "fast_ema": [20, 30, 40, 60],
+    "slow_ema": [50, 80, 120, 200],
+    "trend_weight": [0.25, 0.5, 0.75],
+    "vol_window": [20, 60],
+    "vol_penalty": [0.0, 0.02, 0.03, 0.04],
+    "min_momentum": [0.0, 0.02],
+    "higher_low_window": [5, 10],
+    "breakout_buffer": [0.99, 1.0],
+    "require_higher_low": [True],
+    "regime_fast_ma": [10, 20, 40],
+    "regime_slow_ma": [120, 200],
+    "regime_momentum_window": [40, 60, 120],
+    "rebalance_frequency": ["weekly", "biweekly", "monthly"],
+    "top_k": [1, 2, 3],
+    "adaptive_top_k": [False, True],
+    "top_k_score_gap": [0.02, 0.05, 0.08, 0.10],
+    "top_k_uptrend": [1, 2],
+    "top_k_range": [1, 2],
+    "top_k_downtrend": [0, 1],
+    "empty_threshold": ["ret_gt_0", "score_gt_0", "trend_filter"],
+    "cash_entry_mode": ["daily_when_cash", "rebalance_only"],
+    "cash_entry_confirmations": [2, 3],
+    "min_days_to_rebalance_for_cash_entry": [0, 2, 5],
+    "min_holding_days": [10, 20, 30],
+    "rank_switch_buffer": [1, 2],
+    "rebalance_turnover_threshold": [0.1, 0.18, 0.25],
+}
+
+AUTO_ROBUST_CONSTRAINTS: Dict[str, Any] = {
+    "max_drawdown": 0.30,
+    "min_trades": 6,
+    "min_walk_forward_sample_count": 3,
+    "min_walk_forward_positive_ratio": 0.60,
+    "min_walk_forward_beat_benchmark_ratio": 0.50,
+    "min_validation_return": 0.0,
+    "min_test_calmar": 0.0,
+    "max_calmar_gap": 2.5,
+}
 
 
 TEMPLATE_SEARCH_KEYS: Dict[str, List[str]] = {
     "industry_momentum_enhanced": [
         "rebalance_frequency",
         "top_k",
+        "adaptive_top_k",
+        "top_k_score_gap",
         "momentum_window",
         "absolute_window",
         "trend_fast_ma",
@@ -84,6 +161,53 @@ TEMPLATE_SEARCH_KEYS: Dict[str, List[str]] = {
         "trend_fast_ma",
         "trend_ma",
         "empty_threshold",
+        "cash_entry_mode",
+        "cash_entry_confirmations",
+        "min_days_to_rebalance_for_cash_entry",
+    ],
+    "ema_momentum_rotation": [
+        "rebalance_frequency",
+        "top_k",
+        "fast_ema",
+        "slow_ema",
+        "momentum_window",
+        "vol_window",
+        "trend_weight",
+        "vol_penalty",
+        "min_momentum",
+        "cash_entry_mode",
+        "cash_entry_confirmations",
+        "min_days_to_rebalance_for_cash_entry",
+    ],
+    "price_action_breakout_rotation": [
+        "rebalance_frequency",
+        "top_k",
+        "momentum_window",
+        "lookback",
+        "vol_window",
+        "higher_low_window",
+        "breakout_buffer",
+        "require_higher_low",
+        "min_momentum",
+        "vol_penalty",
+        "cash_entry_mode",
+        "cash_entry_confirmations",
+        "min_days_to_rebalance_for_cash_entry",
+    ],
+    "fibonacci_retracement_rotation": [
+        "rebalance_frequency",
+        "top_k",
+        "momentum_window",
+        "lookback",
+        "trend_ema",
+        "vol_window",
+        "fib_low",
+        "fib_high",
+        "zone_tolerance",
+        "bounce_days",
+        "bounce_threshold",
+        "min_leg_return",
+        "vol_penalty",
         "cash_entry_mode",
         "cash_entry_confirmations",
         "min_days_to_rebalance_for_cash_entry",
@@ -205,6 +329,7 @@ class MiningService:
 
     async def start(self, payload: Dict[str, Any], user_id: str) -> str:
         await self.ensure_indexes()
+        payload = self._prepare_payload(payload)
         run_id = uuid.uuid4().hex
         now = datetime.utcnow()
         doc = {
@@ -214,12 +339,38 @@ class MiningService:
             "progress": 0,
             "message": "queued",
             "payload": payload,
+            "mode": payload.get("mode", "custom"),
+            "policy": self._policy_summary(payload),
             "created_at": now,
             "updated_at": now,
         }
         await self.runs.insert_one(doc)
         asyncio.create_task(self._run(run_id, payload, user_id))
         return run_id
+
+    def _prepare_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        prepared = dict(payload)
+        if prepared.get("mode") != "auto_robust":
+            return prepared
+
+        prepared["templates"] = [item for item in AUTO_ROBUST_TEMPLATES if item in STRATEGIES]
+        prepared["search_method"] = "random"
+        prepared["search_space"] = {key: list(values) for key, values in AUTO_ROBUST_SEARCH_SPACE.items()}
+        prepared["max_trials"] = min(300, max(120, int(prepared.get("max_trials") or 0)))
+        prepared["walk_forward"] = True
+        prepared["walk_forward_train_days"] = 504
+        prepared["walk_forward_validation_days"] = 126
+        prepared["walk_forward_test_days"] = 126
+        prepared["walk_forward_step_days"] = 126
+        prepared["max_walk_forward_slices"] = max(5, int(prepared.get("max_walk_forward_slices") or 0))
+        prepared["objective"] = "robust_walk_forward_calmar"
+        prepared["constraints"] = dict(AUTO_ROBUST_CONSTRAINTS)
+        prepared["profile"] = {
+            "id": "auto_robust",
+            "name": "稳健自动挖掘",
+            "method": "模板池随机采样 + 训练/验证/样本外切分 + walk-forward + 2 倍成本压力测试",
+        }
+        return prepared
 
     async def get(self, run_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         await self.ensure_indexes()
@@ -304,6 +455,7 @@ class MiningService:
                                 "walk_forward_summary": item.get("walk_forward_summary") or {},
                                 "stress_2x_metrics": item["stress_2x_metrics"],
                                 "reasons": item["reasons"],
+                                "explanation": item.get("explanation") or {},
                             },
                             "created_at": datetime.utcnow(),
                         }
@@ -321,6 +473,8 @@ class MiningService:
                         "candidate_count": len(accepted),
                         "data_warnings": warnings,
                         "split_plan": self._split_plan_summary(split_plan),
+                        "mode": payload.get("mode", "custom"),
+                        "policy": self._policy_summary(payload),
                         "updated_at": datetime.utcnow(),
                     }
                 },
@@ -416,7 +570,16 @@ class MiningService:
         )
         stress_metrics = self._with_benchmark_metrics(stress["metrics"], stress.get("diagnostics") or {})
         accepted, reasons = self._accepted(metrics_by_split, stress_metrics, walk_forward_summary, payload)
+        score_components = self._score_components(metrics_by_split, stress_metrics, walk_forward_summary)
         score = self._score(metrics_by_split, stress_metrics, walk_forward_summary)
+        explanation = self._explain_trial(
+            accepted,
+            metrics_by_split,
+            stress_metrics,
+            walk_forward_summary,
+            score_components,
+            payload,
+        )
         return {
             "run_id": run_id,
             "trial_index": trial_index,
@@ -431,6 +594,7 @@ class MiningService:
             "stress_2x_metrics": stress_metrics,
             "walk_forward_slices": walk_forward_slices,
             "walk_forward_summary": walk_forward_summary,
+            "explanation": explanation,
             "created_at": datetime.utcnow(),
         }
 
@@ -566,6 +730,10 @@ class MiningService:
             params["momentum_windows"] = sorted({20, middle_window, max(window, 120)})
             params["momentum_weights"] = self._momentum_weights(len(params["momentum_windows"]))
             params["vol_penalty"] = 0.03
+            params["adaptive_top_k"] = bool(combo.get("adaptive_top_k", False))
+            params["top_k_score_gap"] = float(combo.get("top_k_score_gap", 0.05))
+            if params["adaptive_top_k"]:
+                params["top_k"] = max(2, int(params.get("top_k", 1)))
         elif template == "vol_adjusted_momentum":
             params["fast_window"] = min(window, 60)
             params["slow_window"] = max(window, 120)
@@ -578,6 +746,58 @@ class MiningService:
             params["fast_ma"] = max(5, min(trend_fast_ma or 20, trend_ma))
             params["slow_ma"] = trend_ma
             params["score_window"] = window
+        elif template == "ema_momentum_rotation":
+            fast_ema = int(combo.get("fast_ema", 30))
+            slow_ema = int(combo.get("slow_ema", 50))
+            if slow_ema <= fast_ema:
+                slow_ema = fast_ema + 20
+            params.update(
+                {
+                    "fast_ema": fast_ema,
+                    "slow_ema": slow_ema,
+                    "momentum_window": window,
+                    "vol_window": vol_window,
+                    "trend_weight": float(combo.get("trend_weight", 0.5)),
+                    "vol_penalty": float(combo.get("vol_penalty", 0.02)),
+                    "min_momentum": float(combo.get("min_momentum", 0.0)),
+                }
+            )
+        elif template == "price_action_breakout_rotation":
+            params.update(
+                {
+                    "lookback": int(combo.get("lookback", max(40, window))),
+                    "momentum_window": min(window, 120),
+                    "higher_low_window": int(combo.get("higher_low_window", 10)),
+                    "breakout_buffer": float(combo.get("breakout_buffer", 0.99)),
+                    "require_higher_low": bool(combo.get("require_higher_low", True)),
+                    "breakout_weight": 1.5,
+                    "range_weight": 0.05,
+                    "vol_window": vol_window,
+                    "vol_penalty": float(combo.get("vol_penalty", 0.02)),
+                    "min_momentum": float(combo.get("min_momentum", 0.0)),
+                }
+            )
+        elif template == "fibonacci_retracement_rotation":
+            fib_low = float(combo.get("fib_low", 0.382))
+            fib_high = float(combo.get("fib_high", 0.618))
+            if fib_high <= fib_low:
+                fib_high = min(0.95, fib_low + 0.236)
+            params.update(
+                {
+                    "lookback": int(combo.get("lookback", max(60, window))),
+                    "fib_low": fib_low,
+                    "fib_high": fib_high,
+                    "zone_tolerance": float(combo.get("zone_tolerance", 0.02)),
+                    "bounce_days": int(combo.get("bounce_days", 3)),
+                    "bounce_threshold": float(combo.get("bounce_threshold", 0.0)),
+                    "min_leg_return": float(combo.get("min_leg_return", 0.10)),
+                    "trend_ema": int(combo.get("trend_ema", 60)),
+                    "vol_window": vol_window,
+                    "bounce_weight": 2.0,
+                    "fib_distance_penalty": 0.25,
+                    "vol_penalty": float(combo.get("vol_penalty", 0.02)),
+                }
+            )
         elif template in {"adaptive_regime_rotation", "biweekly_adaptive_stable_rotation"}:
             if is_biweekly_stable:
                 params["rebalance_frequency"] = "biweekly"
@@ -776,6 +996,147 @@ class MiningService:
             summary["trade_count_min"] = int(min(trades))
         return summary
 
+    def _acceptance_checks(
+        self,
+        metrics: Dict[str, Dict[str, Any]],
+        stress_metrics: Dict[str, Any],
+        walk_forward_summary: Dict[str, Any],
+        payload: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        constraints = payload.get("constraints") or {}
+        max_drawdown = float(constraints.get("max_drawdown", 0.35))
+        min_trades = int(constraints.get("min_trades", 4))
+        min_walk_forward_positive_ratio = float(constraints.get("min_walk_forward_positive_ratio", 0.5))
+        min_walk_forward_beat_ratio = float(constraints.get("min_walk_forward_beat_benchmark_ratio", 0.4))
+        min_walk_forward_sample_count = int(constraints.get("min_walk_forward_sample_count", 0))
+        min_validation_return = constraints.get("min_validation_return")
+        min_test_calmar = constraints.get("min_test_calmar")
+        max_calmar_gap = constraints.get("max_calmar_gap")
+        test = metrics["test"]
+        validation = metrics["validation"]
+        positive_slices = sum(1 for item in metrics.values() if item.get("total_return", 0) > 0)
+        checks = [
+            {
+                "key": "test_return_positive",
+                "label": "样本外收益为正",
+                "passed": test.get("total_return", 0) > 0,
+                "value": self._round_metric(test.get("total_return")),
+                "threshold": "> 0",
+                "failure": "test_return_not_positive",
+            },
+            {
+                "key": "test_excess_positive",
+                "label": "样本外跑赢基准",
+                "passed": test.get("excess_return", test.get("total_return", 0)) > 0,
+                "value": self._round_metric(test.get("excess_return", test.get("total_return"))),
+                "threshold": "> 0",
+                "failure": "test_excess_not_positive",
+            },
+            {
+                "key": "drawdown_limit",
+                "label": "样本外最大回撤可控",
+                "passed": abs(test.get("max_drawdown", 0)) <= max_drawdown,
+                "value": self._round_metric(test.get("max_drawdown")),
+                "threshold": f"abs <= {max_drawdown:.2f}",
+                "failure": "drawdown_too_high",
+            },
+            {
+                "key": "trade_count",
+                "label": "交易次数足够",
+                "passed": test.get("trade_count", 0) >= min_trades,
+                "value": int(test.get("trade_count", 0)),
+                "threshold": f">= {min_trades}",
+                "failure": "too_few_trades",
+            },
+            {
+                "key": "split_concentration",
+                "label": "训练/验证/样本外不集中",
+                "passed": positive_slices >= 2,
+                "value": positive_slices,
+                "threshold": ">= 2 段正收益",
+                "failure": "performance_too_concentrated",
+            },
+            {
+                "key": "cost_stress",
+                "label": "2 倍成本压力测试为正",
+                "passed": stress_metrics.get("total_return", 0) > 0,
+                "value": self._round_metric(stress_metrics.get("total_return")),
+                "threshold": "> 0",
+                "failure": "failed_2x_cost_stress",
+            },
+        ]
+
+        if min_validation_return is not None:
+            min_value = float(min_validation_return)
+            checks.append(
+                {
+                    "key": "validation_return",
+                    "label": "验证集收益为正",
+                    "passed": validation.get("total_return", 0) > min_value,
+                    "value": self._round_metric(validation.get("total_return")),
+                    "threshold": f"> {min_value:.2f}",
+                    "failure": "validation_return_below_threshold",
+                }
+            )
+        if min_test_calmar is not None:
+            min_value = float(min_test_calmar)
+            checks.append(
+                {
+                    "key": "test_calmar",
+                    "label": "样本外 Calmar 达标",
+                    "passed": test.get("calmar", 0) > min_value,
+                    "value": self._round_metric(test.get("calmar")),
+                    "threshold": f"> {min_value:.2f}",
+                    "failure": "test_calmar_below_threshold",
+                }
+            )
+        if max_calmar_gap is not None:
+            max_value = float(max_calmar_gap)
+            calmar_gap = abs(float(test.get("calmar", 0)) - float(validation.get("calmar", 0)))
+            checks.append(
+                {
+                    "key": "calmar_gap",
+                    "label": "验证/样本外 Calmar 差距不过大",
+                    "passed": calmar_gap <= max_value,
+                    "value": self._round_metric(calmar_gap),
+                    "threshold": f"<= {max_value:.2f}",
+                    "failure": "calmar_gap_too_large",
+                }
+            )
+        if min_walk_forward_sample_count > 0:
+            checks.append(
+                {
+                    "key": "walk_forward_sample_count",
+                    "label": "walk-forward 样本数足够",
+                    "passed": walk_forward_summary.get("sample_count", 0) >= min_walk_forward_sample_count,
+                    "value": int(walk_forward_summary.get("sample_count", 0)),
+                    "threshold": f">= {min_walk_forward_sample_count}",
+                    "failure": "walk_forward_too_few_slices",
+                }
+            )
+        if walk_forward_summary.get("sample_count", 0) >= 2:
+            checks.extend(
+                [
+                    {
+                        "key": "walk_forward_positive_ratio",
+                        "label": "walk-forward 正收益占比达标",
+                        "passed": walk_forward_summary.get("positive_ratio", 0) >= min_walk_forward_positive_ratio,
+                        "value": self._round_metric(walk_forward_summary.get("positive_ratio")),
+                        "threshold": f">= {min_walk_forward_positive_ratio:.2f}",
+                        "failure": "walk_forward_return_unstable",
+                    },
+                    {
+                        "key": "walk_forward_beat_ratio",
+                        "label": "walk-forward 跑赢基准占比达标",
+                        "passed": walk_forward_summary.get("beat_benchmark_ratio", 0) >= min_walk_forward_beat_ratio,
+                        "value": self._round_metric(walk_forward_summary.get("beat_benchmark_ratio")),
+                        "threshold": f">= {min_walk_forward_beat_ratio:.2f}",
+                        "failure": "walk_forward_excess_unstable",
+                    },
+                ]
+            )
+        return checks
+
     def _accepted(
         self,
         metrics: Dict[str, Dict[str, Any]],
@@ -783,39 +1144,16 @@ class MiningService:
         walk_forward_summary: Dict[str, Any],
         payload: Dict[str, Any],
     ) -> tuple[bool, List[str]]:
-        constraints = payload.get("constraints") or {}
-        max_drawdown = float(constraints.get("max_drawdown", 0.35))
-        min_trades = int(constraints.get("min_trades", 4))
-        min_walk_forward_positive_ratio = float(constraints.get("min_walk_forward_positive_ratio", 0.5))
-        min_walk_forward_beat_ratio = float(constraints.get("min_walk_forward_beat_benchmark_ratio", 0.4))
-        reasons = []
-        test = metrics["test"]
-        if test.get("total_return", 0) <= 0:
-            reasons.append("test_return_not_positive")
-        if test.get("excess_return", test.get("total_return", 0)) <= 0:
-            reasons.append("test_excess_not_positive")
-        if abs(test.get("max_drawdown", 0)) > max_drawdown:
-            reasons.append("drawdown_too_high")
-        if test.get("trade_count", 0) < min_trades:
-            reasons.append("too_few_trades")
-        positive_slices = sum(1 for item in metrics.values() if item.get("total_return", 0) > 0)
-        if positive_slices < 2:
-            reasons.append("performance_too_concentrated")
-        if stress_metrics.get("total_return", 0) <= 0:
-            reasons.append("failed_2x_cost_stress")
-        if walk_forward_summary.get("sample_count", 0) >= 2:
-            if walk_forward_summary.get("positive_ratio", 0) < min_walk_forward_positive_ratio:
-                reasons.append("walk_forward_return_unstable")
-            if walk_forward_summary.get("beat_benchmark_ratio", 0) < min_walk_forward_beat_ratio:
-                reasons.append("walk_forward_excess_unstable")
+        checks = self._acceptance_checks(metrics, stress_metrics, walk_forward_summary, payload)
+        reasons = [item["failure"] for item in checks if not item["passed"]]
         return not reasons, reasons
 
-    def _score(
+    def _score_components(
         self,
         metrics: Dict[str, Dict[str, Any]],
         stress_metrics: Dict[str, Any],
         walk_forward_summary: Dict[str, Any],
-    ) -> float:
+    ) -> Dict[str, Dict[str, float]]:
         test = metrics["test"]
         validation = metrics["validation"]
         penalty = abs(test.get("max_drawdown", 0)) * 0.5
@@ -835,18 +1173,89 @@ class MiningService:
             + 0.5 * max(0.0, 0.5 - walk_forward_summary.get("positive_ratio", 0))
             + 0.5 * max(0.0, 0.4 - walk_forward_summary.get("beat_benchmark_ratio", 0))
         )
-        return (
-            test.get("calmar", 0)
-            + 0.3 * validation.get("calmar", 0)
-            + excess_bonus
-            + validation_excess_bonus
-            + stress_bonus
-            + walk_forward_bonus
-            - penalty
-            - turnover_penalty
-            - stability
-            - walk_forward_penalty
-        )
+        return {
+            "positive": {
+                "test_calmar": self._round_metric(test.get("calmar", 0)),
+                "validation_calmar": self._round_metric(0.3 * validation.get("calmar", 0)),
+                "test_excess_return": self._round_metric(excess_bonus),
+                "validation_excess_return": self._round_metric(validation_excess_bonus),
+                "stress_return": self._round_metric(stress_bonus),
+                "walk_forward": self._round_metric(walk_forward_bonus),
+            },
+            "penalty": {
+                "drawdown": self._round_metric(-penalty),
+                "turnover": self._round_metric(-turnover_penalty),
+                "calmar_gap": self._round_metric(-stability),
+                "walk_forward_instability": self._round_metric(-walk_forward_penalty),
+            },
+        }
+
+    def _score(
+        self,
+        metrics: Dict[str, Dict[str, Any]],
+        stress_metrics: Dict[str, Any],
+        walk_forward_summary: Dict[str, Any],
+    ) -> float:
+        components = self._score_components(metrics, stress_metrics, walk_forward_summary)
+        return sum(components["positive"].values()) + sum(components["penalty"].values())
+
+    def _explain_trial(
+        self,
+        accepted: bool,
+        metrics: Dict[str, Dict[str, Any]],
+        stress_metrics: Dict[str, Any],
+        walk_forward_summary: Dict[str, Any],
+        score_components: Dict[str, Dict[str, float]],
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        checks = self._acceptance_checks(metrics, stress_metrics, walk_forward_summary, payload)
+        return {
+            "method": payload.get("profile", {}).get(
+                "method",
+                "训练/验证/样本外切分 + walk-forward + 2 倍成本压力测试",
+            ),
+            "decision": "accepted" if accepted else "rejected",
+            "passed_checks": [item for item in checks if item["passed"]],
+            "failed_checks": [item for item in checks if not item["passed"]],
+            "score_components": score_components,
+            "robustness": {
+                "validation_return": self._round_metric(metrics["validation"].get("total_return")),
+                "test_return": self._round_metric(metrics["test"].get("total_return")),
+                "test_excess_return": self._round_metric(metrics["test"].get("excess_return")),
+                "test_max_drawdown": self._round_metric(metrics["test"].get("max_drawdown")),
+                "stress_2x_return": self._round_metric(stress_metrics.get("total_return")),
+                "walk_forward_sample_count": int(walk_forward_summary.get("sample_count", 0)),
+                "walk_forward_positive_ratio": self._round_metric(walk_forward_summary.get("positive_ratio")),
+                "walk_forward_beat_benchmark_ratio": self._round_metric(
+                    walk_forward_summary.get("beat_benchmark_ratio")
+                ),
+            },
+        }
+
+    @staticmethod
+    def _round_metric(value: Any) -> float:
+        if value is None:
+            return 0.0
+        return round(float(value), 6)
+
+    @staticmethod
+    def _policy_summary(payload: Dict[str, Any]) -> Dict[str, Any]:
+        constraints = payload.get("constraints") or {}
+        return {
+            "mode": payload.get("mode", "custom"),
+            "profile": payload.get("profile") or {},
+            "templates": payload.get("templates") or [],
+            "search_method": payload.get("search_method", "random"),
+            "max_trials": int(payload.get("max_trials", 40)),
+            "walk_forward": {
+                "enabled": bool(payload.get("walk_forward", True)),
+                "train_days": int(payload.get("walk_forward_train_days", 504)),
+                "validation_days": int(payload.get("walk_forward_validation_days", 126)),
+                "test_days": int(payload.get("walk_forward_test_days", 126)),
+                "max_slices": int(payload.get("max_walk_forward_slices", 4)),
+            },
+            "constraints": constraints,
+        }
 
     def _with_benchmark_metrics(self, metrics: Dict[str, Any], diagnostics: Dict[str, Any]) -> Dict[str, Any]:
         enriched = dict(metrics)

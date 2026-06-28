@@ -109,6 +109,70 @@ def test_biweekly_stable_mining_defaults_match_strategy_catalog() -> None:
     assert params["rank_switch_buffer"] == 2
 
 
+def test_industry_mining_can_generate_adaptive_top_k_rule() -> None:
+    service = _service()
+
+    params = service._params_for_template(
+        "industry_momentum_enhanced",
+        {"top_k": 1, "adaptive_top_k": True, "top_k_score_gap": 0.08},
+    )
+
+    assert params["adaptive_top_k"] is True
+    assert params["top_k"] == 2
+    assert params["top_k_score_gap"] == 0.08
+
+
+def test_price_tool_strategy_mining_params_are_generated() -> None:
+    service = _service()
+
+    ema = service._params_for_template(
+        "ema_momentum_rotation",
+        {"fast_ema": 60, "slow_ema": 50, "momentum_window": 20, "trend_weight": 0.75},
+    )
+    price_action = service._params_for_template(
+        "price_action_breakout_rotation",
+        {"lookback": 60, "momentum_window": 40, "higher_low_window": 5, "require_higher_low": True},
+    )
+    fibonacci = service._params_for_template(
+        "fibonacci_retracement_rotation",
+        {"lookback": 120, "fib_low": 0.382, "fib_high": 0.618, "bounce_days": 3},
+    )
+
+    assert ema["fast_ema"] == 60
+    assert ema["slow_ema"] > ema["fast_ema"]
+    assert ema["trend_weight"] == 0.75
+    assert price_action["lookback"] == 60
+    assert price_action["higher_low_window"] == 5
+    assert price_action["require_higher_low"] is True
+    assert fibonacci["lookback"] == 120
+    assert fibonacci["fib_low"] == 0.382
+    assert fibonacci["fib_high"] == 0.618
+    assert fibonacci["bounce_days"] == 3
+
+
+def test_auto_robust_profile_uses_stable_templates_and_constraints() -> None:
+    service = _service()
+
+    payload = service._prepare_payload(
+        {
+            "mode": "auto_robust",
+            "templates": ["fibonacci_retracement_rotation"],
+            "search_method": "grid",
+            "max_trials": 10,
+            "constraints": {"max_drawdown": 0.9},
+        }
+    )
+
+    assert payload["mode"] == "auto_robust"
+    assert payload["search_method"] == "random"
+    assert payload["max_trials"] == 120
+    assert "fibonacci_retracement_rotation" not in payload["templates"]
+    assert "ema_momentum_rotation" in payload["templates"]
+    assert payload["search_space"]["require_higher_low"] == [True]
+    assert payload["constraints"]["max_drawdown"] == 0.30
+    assert payload["constraints"]["min_walk_forward_sample_count"] == 3
+
+
 def test_split_plan_adds_walk_forward_slices() -> None:
     service = _service()
 
@@ -162,3 +226,47 @@ def test_walk_forward_summary_feeds_acceptance_rules() -> None:
     assert "walk_forward_return_unstable" in reasons
     assert "walk_forward_excess_unstable" in reasons
     assert score < 1
+
+
+def test_explain_trial_returns_checks_and_score_components() -> None:
+    service = _service()
+    payload = service._prepare_payload({"mode": "auto_robust"})
+    metrics = {
+        "train": {"total_return": 0.10, "max_drawdown": -0.08, "trade_count": 10},
+        "validation": {
+            "total_return": 0.08,
+            "excess_return": 0.02,
+            "calmar": 0.6,
+            "max_drawdown": -0.10,
+            "trade_count": 8,
+        },
+        "test": {
+            "total_return": 0.07,
+            "excess_return": 0.03,
+            "calmar": 0.5,
+            "max_drawdown": -0.12,
+            "trade_count": 8,
+            "avg_turnover": 0.2,
+        },
+    }
+    stress = {"total_return": 0.04}
+    walk_forward = {
+        "sample_count": 3,
+        "positive_ratio": 0.666667,
+        "beat_benchmark_ratio": 0.666667,
+        "calmar_median": 0.4,
+        "calmar_std": 0.2,
+        "excess_return_median": 0.02,
+    }
+
+    accepted, reasons = service._accepted(metrics, stress, walk_forward, payload)
+    components = service._score_components(metrics, stress, walk_forward)
+    explanation = service._explain_trial(accepted, metrics, stress, walk_forward, components, payload)
+
+    assert accepted
+    assert reasons == []
+    assert explanation["decision"] == "accepted"
+    assert explanation["failed_checks"] == []
+    assert any(item["key"] == "walk_forward_positive_ratio" for item in explanation["passed_checks"])
+    assert explanation["score_components"]["positive"]["test_calmar"] == 0.5
+    assert explanation["robustness"]["walk_forward_sample_count"] == 3
